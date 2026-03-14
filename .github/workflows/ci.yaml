@@ -1,0 +1,63 @@
+# export-function のビルド確認 + dev 環境への自動デプロイ。
+# Cloud Functions Gen2 はソースから直接デプロイする（Docker イメージ不要）。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast1
+  FUNCTION_NAME: export-postgres-to-bigquery-dev
+  PROJECT: overload-party-dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: export-function
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: export-function/go.mod
+
+      - run: go vet ./...
+
+      - run: go build ./...
+
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.CI_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Cloud Function
+        run: |
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT }} \
+            --runtime go121 \
+            --entry-point ExportPostgresToBigQuery \
+            --source export-function/ \
+            --quiet

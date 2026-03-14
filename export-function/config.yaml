@@ -1,0 +1,106 @@
+tables:
+  games:
+    source_table: games
+    bigquery_table: games
+    timestamp_column: created_at
+    query: |
+      SELECT
+        game_id, player1_id, player2_id,
+        player1_deck_snapshot::text AS player1_deck_snapshot,
+        player2_deck_snapshot::text AS player2_deck_snapshot,
+        status, winner_id, created_at, updated_at, finished_at
+      FROM games
+      WHERE created_at >= $1 AND created_at < $2
+      ORDER BY created_at ASC
+
+  game_events:
+    source_table: game_events
+    bigquery_table: game_events
+    timestamp_column: created_at
+    query: |
+      SELECT
+        game_id, sequence_number, event_type, player_id,
+        event_data::text AS event_data,
+        created_at
+      FROM game_events
+      WHERE created_at >= $1 AND created_at < $2
+      ORDER BY created_at ASC
+
+  players:
+    source_table: players
+    bigquery_table: players
+    timestamp_column: updated_at
+    query: |
+      SELECT
+        player_id, username, level, exp, wins, losses,
+        is_premium, selected_faction,
+        created_at, updated_at
+      FROM players
+      WHERE updated_at >= $1 AND updated_at < $2
+      ORDER BY updated_at ASC
+
+  matches:
+    source_table: matches
+    bigquery_table: matches
+    timestamp_column: created_at
+    query: |
+      SELECT
+        match_id, game_id, created_at
+      FROM matches
+      WHERE created_at >= $1 AND created_at < $2
+      ORDER BY created_at ASC
+
+  card_definitions:
+    source_table: card_definitions
+    bigquery_table: card_definitions
+    timestamp_column: updated_at
+    query: |
+      SELECT
+        card_no, card_name, resource_label, faction, card_type,
+        resizable, elastic,
+        stats::text AS stats,
+        effect_text,
+        effects::text AS effects,
+        restriction, is_active,
+        created_at, updated_at
+      FROM card_definitions
+      WHERE updated_at >= $1 AND updated_at < $2
+      ORDER BY updated_at ASC
+
+  deck_cards:
+    source_table: deck_cards
+    bigquery_table: deck_cards
+    timestamp_column: created_at
+    query: |
+      SELECT
+        dc.player_id, dc.deck_id, dc.card_no, dc.art_no, dc.count,
+        d.deck_name, d.is_valid, d.created_at
+      FROM deck_cards dc
+      JOIN decks d ON dc.player_id = d.player_id AND dc.deck_id = d.deck_id
+      WHERE d.created_at >= $1 AND d.created_at < $2
+      ORDER BY d.created_at ASC
+
+  subscriptions:
+    source_table: subscriptions
+    bigquery_table: subscriptions
+    timestamp_column: created_at
+    query: |
+      SELECT
+        player_id, subscription_id, product_id, platform,
+        status, current_period_start, current_period_end,
+        created_at, updated_at
+      FROM subscriptions
+      WHERE created_at >= $1 AND created_at < $2
+      ORDER BY created_at ASC
+
+  purchases:
+    source_table: one_time_purchases
+    bigquery_table: purchases
+    timestamp_column: purchased_at
+    query: |
+      SELECT
+        player_id, purchase_id, product_id, platform,
+        purchased_at
+      FROM one_time_purchases
+      WHERE purchased_at >= $1 AND purchased_at < $2
+      ORDER BY purchased_at ASC
