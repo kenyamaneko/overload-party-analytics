@@ -42,7 +42,7 @@ while [[ "$CHUNK_START" < "$CURRENT_DATE" ]]; do
 
     gcloud functions call "$FUNCTION_NAME" \
       --region "$REGION" \
-      --data "{\"tables\": [\"$TBL\"], \"mode\": \"full\"}" \
+      --data "{\"tables\": [\"$TBL\"], \"mode\": \"full\", \"start_date\": \"$CHUNK_START\", \"end_date\": \"$CHUNK_END\"}" \
       --quiet
 
     echo "  Done ${TBL}"

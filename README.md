@@ -56,7 +56,6 @@ overload-party-analytics/
 │       ├── dev/
 │       └── prod/
 ├── scripts/
-│   ├── deploy.sh          # デプロイスクリプト
 │   └── backfill.sh        # 履歴データバックフィル
 └── docs/
     ├── schema.md          # BigQuery スキーマ
@@ -94,9 +93,8 @@ cd terraform/environments/dev
 terraform init
 terraform apply
 
-# 2. Cloud Function デプロイ
-cd ../../../
-./scripts/deploy.sh dev
+# 2. Cloud Function デプロイ (main ブランチへの push で CI が自動デプロイ)
+git push origin main
 
 # 3. 履歴データのバックフィル (オプション)
 ./scripts/backfill.sh dev games 2024-01-01
@@ -130,16 +128,18 @@ curl -X POST http://localhost:8080 \
 
 ## エクスポート対象テーブル
 
-| テーブル | 用途 | 優先度 |
-|---------|------|--------|
-| games | ゲーム結果、勝率分析、勝利条件分布 | High |
-| game_events | カード使用率、行動分析 | High |
-| players | DAU、ファクション選択傾向 | High |
-| card_definitions | カードマスタ（メタ分析の JOIN 用） | High |
-| deck_cards | デッキ構成分析、カード採用率 | High |
-| matches | ゲーム履歴 | Medium |
-| subscriptions | MRR、チャーン率 | Medium |
-| one_time_purchases | ARPU、購入頻度 | Medium |
+| テーブル | 用途 | 更新頻度 |
+|---------|------|---------|
+| games | ゲーム結果、勝率分析、勝利条件分布 | Daily |
+| game_events | カード使用率、行動分析 | Hourly |
+| players | DAU、ファクション選択傾向 | Daily |
+| card_definitions | カードマスタ（メタ分析の JOIN 用） | Daily |
+| deck_cards | デッキ構成分析、カード採用率 | Daily |
+| matches | ゲーム履歴 | Daily |
+| subscriptions | MRR、チャーン率 | Daily |
+| purchases | ARPU、購入頻度 (source: one_time_purchases) | Daily |
+
+更新があるテーブル (games, players, subscriptions, card_definitions) は append-only で蓄積されます。最新状態は `*_latest` VIEW (`games_latest`, `players_latest`, `subscriptions_latest`, `card_definitions_latest`) で取得してください。
 
 ## BigQuery 分析例
 
@@ -150,7 +150,7 @@ SELECT
   COUNT(*) AS total_games,
   COUNTIF(winner_id = player1_id) AS wins,
   ROUND(COUNTIF(winner_id = player1_id) / COUNT(*) * 100, 2) AS win_rate
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY faction
@@ -177,7 +177,7 @@ SELECT
     '$.winCondition'
   ) AS win_condition,
   COUNT(*) AS count
-FROM `overload-party-dev.analytics.games` g
+FROM `overload-party-dev.analytics.games_latest` g
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY win_condition

@@ -17,8 +17,10 @@ func init() {
 
 // ExportRequest defines the request payload for the export function
 type ExportRequest struct {
-	Tables []string `json:"tables"`
-	Mode   string   `json:"mode"` // "incremental" or "full"
+	Tables    []string `json:"tables"`
+	Mode      string   `json:"mode"`       // "incremental" or "full"
+	StartDate string   `json:"start_date"` // "YYYY-MM-DD" (full mode only)
+	EndDate   string   `json:"end_date"`   // "YYYY-MM-DD" (full mode only)
 }
 
 // ExportResponse defines the response payload
@@ -50,7 +52,7 @@ func exportHandler(w http.ResponseWriter, r *http.Request) {
 		req.Mode = "incremental"
 	}
 
-	log.Printf("INFO: Starting export - tables=%v, mode=%s", req.Tables, req.Mode)
+	log.Printf("INFO: Starting export - tables=%v, mode=%s, start_date=%s, end_date=%s", req.Tables, req.Mode, req.StartDate, req.EndDate)
 
 	// Initialize exporter
 	exp, err := exporter.New(ctx)
@@ -62,7 +64,7 @@ func exportHandler(w http.ResponseWriter, r *http.Request) {
 	defer exp.Close()
 
 	// Run export
-	results := exp.Export(ctx, req.Tables, req.Mode)
+	results := exp.Export(ctx, req.Tables, req.Mode, req.StartDate, req.EndDate)
 
 	// Check if any export failed
 	success := true

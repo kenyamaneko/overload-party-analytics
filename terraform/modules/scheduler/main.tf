@@ -60,7 +60,9 @@ resource "google_cloud_scheduler_job" "export_daily" {
         "players",
         "matches",
         "subscriptions",
-        "purchases"
+        "purchases",
+        "card_definitions",
+        "deck_cards"
       ]
       mode = "incremental"
     }))

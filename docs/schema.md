@@ -2,6 +2,9 @@
 
 Overload Party Analytics - BigQuery テーブル定義
 
+> **Note:** PostgreSQL 側のソーススキーマの SSoT は overload-party-common リポジトリにあります。
+> 本ドキュメントは BigQuery 側のテーブル定義（型変換・パーティショニング・クラスタリング等）を記載しています。
+
 ## Dataset
 
 **Dataset ID:** `analytics`
@@ -12,9 +15,9 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ## Tables
 
-### 1. games
+### 1. games (append-only)
 
-ゲームのメタデータと結果。
+ゲームのメタデータと結果。ステータス遷移のたびに新しい行が追加されます。最新状態は `games_latest` VIEW を使用。
 
 | Column | Type | Mode | Description |
 |--------|------|------|-------------|
@@ -29,11 +32,11 @@ Overload Party Analytics - BigQuery テーブル定義
 | updated_at | TIMESTAMP | REQUIRED | 最終更新日時 |
 | finished_at | TIMESTAMP | NULLABLE | ゲーム終了日時 |
 
-**Partitioning:** created_at (DAY)
+**Partitioning:** updated_at (DAY)
 **Clustering:** status, winner_id
 
 **分析用途:**
-- 勝率分析 (win rate by player, deck, faction)
+- 勝率分析 (win rate by player, deck, faction) - `games_latest` VIEW 経由
 - ゲーム完了率 (completion rate)
 - 平均ゲーム時間 (avg duration = finished_at - created_at)
 
@@ -71,29 +74,32 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 3. players
+### 3. players (append-only)
 
-プレイヤーのプロフィールデータ。
+プレイヤーのプロフィールデータ。増分エクスポートにより `updated_at` が変わるたびに新しい行が追加されます。最新状態の取得には `players_latest` VIEW を使用してください。
 
 | Column | Type | Mode | Description |
 |--------|------|------|-------------|
 | player_id | STRING | REQUIRED | プレイヤー ID |
+| firebase_uid | STRING | REQUIRED | Firebase UID |
 | username | STRING | REQUIRED | ユーザー名 |
-| level | INT64 | NULLABLE | レベル |
-| exp | INT64 | NULLABLE | 経験値 |
+| level | INT64 | REQUIRED | レベル |
+| exp | INT64 | REQUIRED | 経験値 |
 | wins | INT64 | NULLABLE | 勝利数 |
 | losses | INT64 | NULLABLE | 敗北数 |
 | is_premium | BOOL | REQUIRED | プレミアム会員フラグ |
+| equipped_icon_no | INT64 | NULLABLE | 装備中アイコン番号 |
 | selected_faction | STRING | NULLABLE | 選択中の陣営 |
+| premium_expires_at | TIMESTAMP | NULLABLE | プレミアム有効期限 |
 | created_at | TIMESTAMP | REQUIRED | アカウント作成日時 |
 | updated_at | TIMESTAMP | REQUIRED | 最終更新日時 |
 
-**Partitioning:** created_at (DAY)
+**Partitioning:** updated_at (DAY)
 **Clustering:** is_premium, selected_faction
 
 **分析用途:**
-- DAU (Daily Active Users) - `COUNT(DISTINCT player_id) WHERE DATE(updated_at) = @date`
-- 課金ユーザー割合 - `SUM(is_premium) / COUNT(*)`
+- DAU (Daily Active Users) - raw テーブルの `updated_at` から集計
+- 課金ユーザー割合 - `players_latest` VIEW 経由
 - 勝率分析 - `wins / (wins + losses)`
 - ユーザー定着率 (retention)
 
@@ -118,9 +124,65 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 5. subscriptions
+### 5. card_definitions (append-only)
 
-サブスクリプション (継続課金) データ。
+カードマスタデータ。マスタ更新時に新しい行が追加されます。最新状態は `card_definitions_latest` VIEW を使用。
+
+| Column | Type | Mode | Description |
+|--------|------|------|-------------|
+| card_no | INT64 | REQUIRED | カード番号 |
+| card_name | STRING | REQUIRED | カード名 |
+| resource_label | STRING | NULLABLE | リソースラベル |
+| faction | STRING | REQUIRED | 所属陣営 |
+| card_type | STRING | REQUIRED | カード種別 |
+| resizable | BOOL | REQUIRED | リサイズ可能 |
+| elastic | BOOL | REQUIRED | エラスティック |
+| stats | JSON | NULLABLE | ステータス (JSON) |
+| effect_text | STRING | NULLABLE | 効果テキスト |
+| effects | JSON | NULLABLE | 効果データ (JSON) |
+| restriction | STRING | NULLABLE | 制限 |
+| is_active | BOOL | REQUIRED | 有効フラグ |
+| created_at | TIMESTAMP | REQUIRED | 作成日時 |
+| updated_at | TIMESTAMP | REQUIRED | 最終更新日時 |
+
+**Partitioning:** updated_at (DAY)
+**Clustering:** faction, card_type
+
+**分析用途:**
+- カードバランス分析 (JOIN 用マスタ)
+- ファクション別カード構成
+- メタゲーム分析
+
+---
+
+### 6. deck_cards
+
+プレイヤーのデッキ構成データ。
+
+| Column | Type | Mode | Description |
+|--------|------|------|-------------|
+| player_id | STRING | REQUIRED | プレイヤー ID |
+| deck_id | INT64 | REQUIRED | デッキ ID |
+| card_no | INT64 | REQUIRED | カード番号 |
+| art_no | INT64 | NULLABLE | アート番号 |
+| count | INT64 | REQUIRED | 枚数 |
+| deck_name | STRING | NULLABLE | デッキ名 |
+| is_valid | BOOL | NULLABLE | デッキ有効フラグ |
+| created_at | TIMESTAMP | REQUIRED | デッキ作成日時 |
+
+**Partitioning:** created_at (DAY)
+**Clustering:** player_id, card_no
+
+**分析用途:**
+- カード採用率
+- デッキ構成トレンド
+- ファクション別人気カード
+
+---
+
+### 7. subscriptions (append-only)
+
+サブスクリプション (継続課金) データ。ステータス変更時に新しい行が追加されます。最新状態は `subscriptions_latest` VIEW を使用。
 
 | Column | Type | Mode | Description |
 |--------|------|------|-------------|
@@ -135,18 +197,18 @@ Overload Party Analytics - BigQuery テーブル定義
 | created_at | TIMESTAMP | REQUIRED | サブスクリプション作成日時 |
 | updated_at | TIMESTAMP | REQUIRED | 最終更新日時 |
 
-**Partitioning:** created_at (DAY)
+**Partitioning:** updated_at (DAY)
 **Clustering:** player_id, status
 
 **分析用途:**
-- MRR (Monthly Recurring Revenue)
+- MRR (Monthly Recurring Revenue) - `subscriptions_latest` VIEW 経由
 - チャーン率 (Churn Rate)
 - LTV (Lifetime Value)
 - サブスクリプション継続率
 
 ---
 
-### 6. purchases
+### 8. purchases
 
 ワンタイム課金データ。
 
@@ -167,6 +229,54 @@ Overload Party Analytics - BigQuery テーブル定義
 - 購入頻度分析
 - 商品別売上
 - コンバージョン率
+
+---
+
+## Views
+
+### games_latest
+
+games テーブルから game_id ごとに最新の 1 行を返す VIEW。
+
+```sql
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY game_id ORDER BY updated_at DESC) AS rn
+  FROM analytics.games
+) WHERE rn = 1
+```
+
+### subscriptions_latest
+
+subscriptions テーブルから subscription_id ごとに最新の 1 行を返す VIEW。
+
+```sql
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY subscription_id ORDER BY updated_at DESC) AS rn
+  FROM analytics.subscriptions
+) WHERE rn = 1
+```
+
+### players_latest
+
+players テーブルから player_id ごとに最新の 1 行を返す VIEW。
+
+```sql
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY player_id ORDER BY updated_at DESC) AS rn
+  FROM analytics.players
+) WHERE rn = 1
+```
+
+### card_definitions_latest
+
+card_definitions テーブルから card_no ごとに最新の 1 行を返す VIEW。
+
+```sql
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY card_no ORDER BY updated_at DESC) AS rn
+  FROM analytics.card_definitions
+) WHERE rn = 1
+```
 
 ---
 
@@ -203,5 +313,7 @@ WHERE game_id = @game_id
 | games | 1日1回 | < 24時間 |
 | players | 1日1回 | < 24時間 |
 | matches | 1日1回 | < 24時間 |
+| card_definitions | 1日1回 | < 24時間 |
+| deck_cards | 1日1回 | < 24時間 |
 | subscriptions | 1日1回 | < 24時間 |
 | purchases | 1日1回 | < 24時間 |

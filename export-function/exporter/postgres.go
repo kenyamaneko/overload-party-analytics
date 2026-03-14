@@ -2,6 +2,7 @@ package exporter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -34,9 +35,16 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 		rowMap := make(map[string]interface{}, len(fieldDescs))
 		for i, fd := range fieldDescs {
 			val := values[i]
-			// Convert time.Time to RFC3339 for JSON/BigQuery compatibility
-			if t, ok := val.(time.Time); ok {
-				val = t.Format(time.RFC3339Nano)
+			switch v := val.(type) {
+			case time.Time:
+				val = v.Format(time.RFC3339Nano)
+			case []byte:
+				// JSONB columns: preserve as raw JSON so json.Encode writes
+				// an unescaped JSON object instead of a quoted string.
+				val = json.RawMessage(v)
+			case map[string]interface{}:
+				// pgx may also decode JSONB into a map
+				val = v
 			}
 			rowMap[fd.Name] = val
 		}

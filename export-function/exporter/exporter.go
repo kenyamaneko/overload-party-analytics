@@ -103,7 +103,7 @@ func New(ctx context.Context) (*Exporter, error) {
 }
 
 // Export executes the export process for the specified tables
-func (e *Exporter) Export(ctx context.Context, tables []string, mode string) []ExportResult {
+func (e *Exporter) Export(ctx context.Context, tables []string, mode string, startDate, endDate string) []ExportResult {
 	results := make([]ExportResult, 0, len(tables))
 
 	for _, table := range tables {
@@ -112,7 +112,7 @@ func (e *Exporter) Export(ctx context.Context, tables []string, mode string) []E
 			StartTime: time.Now(),
 		}
 
-		rowCount, err := e.exportTable(ctx, table, mode)
+		rowCount, err := e.exportTable(ctx, table, mode, startDate, endDate)
 		if err != nil {
 			result.Success = false
 			result.Error = err.Error()
@@ -131,7 +131,7 @@ func (e *Exporter) Export(ctx context.Context, tables []string, mode string) []E
 }
 
 // exportTable exports a single table and returns the number of rows exported
-func (e *Exporter) exportTable(ctx context.Context, table string, mode string) (int64, error) {
+func (e *Exporter) exportTable(ctx context.Context, table string, mode string, startDate, endDate string) (int64, error) {
 	tableConfig, exists := e.config.Tables[table]
 	if !exists {
 		return 0, fmt.Errorf("table %s not found in config", table)
@@ -145,10 +145,21 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string) (
 
 	// Determine time range
 	startTime := checkpoint.LastExportTime
+	endTime := time.Now()
+
 	if mode == "full" {
 		startTime = time.Time{}
+		if startDate != "" {
+			if t, err := time.Parse("2006-01-02", startDate); err == nil {
+				startTime = t
+			}
+		}
+		if endDate != "" {
+			if t, err := time.Parse("2006-01-02", endDate); err == nil {
+				endTime = t
+			}
+		}
 	}
-	endTime := time.Now()
 
 	log.Printf("INFO: Exporting %s from %v to %v", table, startTime, endTime)
 
@@ -180,12 +191,17 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string) (
 
 	log.Printf("INFO: Loaded into BigQuery table %s", tableConfig.BigQueryTable)
 
-	// Update checkpoint
 	rowCount := int64(len(rows))
-	checkpoint.LastExportTime = endTime
-	checkpoint.LastRowCount = rowCount
-	if err := e.checkpointStore.Update(ctx, table, checkpoint); err != nil {
-		return 0, fmt.Errorf("update checkpoint: %w", err)
+
+	// Update checkpoint only in incremental mode.
+	// Full mode (backfill) must not overwrite the checkpoint to avoid
+	// regressing it to a historical date.
+	if mode != "full" {
+		checkpoint.LastExportTime = endTime
+		checkpoint.LastRowCount = rowCount
+		if err := e.checkpointStore.Update(ctx, table, checkpoint); err != nil {
+			return 0, fmt.Errorf("update checkpoint: %w", err)
+		}
 	}
 
 	log.Printf("SUCCESS: Exported %d rows from %s", rowCount, table)

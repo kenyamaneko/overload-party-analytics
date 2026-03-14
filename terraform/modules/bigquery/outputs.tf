@@ -11,11 +11,13 @@ output "dataset_location" {
 output "table_ids" {
   description = "Map of table names to table IDs"
   value = {
-    games         = google_bigquery_table.games.table_id
-    game_events   = google_bigquery_table.game_events.table_id
-    players       = google_bigquery_table.players.table_id
-    matches       = google_bigquery_table.matches.table_id
-    subscriptions = google_bigquery_table.subscriptions.table_id
-    purchases     = google_bigquery_table.purchases.table_id
+    games            = google_bigquery_table.games.table_id
+    game_events      = google_bigquery_table.game_events.table_id
+    players          = google_bigquery_table.players.table_id
+    matches          = google_bigquery_table.matches.table_id
+    subscriptions    = google_bigquery_table.subscriptions.table_id
+    purchases        = google_bigquery_table.purchases.table_id
+    card_definitions = google_bigquery_table.card_definitions.table_id
+    deck_cards       = google_bigquery_table.deck_cards.table_id
   }
 }

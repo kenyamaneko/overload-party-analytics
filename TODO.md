@@ -2,25 +2,23 @@
 
 ## セットアップ手順 (初回デプロイ)
 
-### ✅ 完了済み
+### 完了済み
 - [x] Terraform モジュール作成
 - [x] Cloud Function コード実装
-- [x] デプロイスクリプト作成
+- [x] バックフィルスクリプト作成
 - [x] ドキュメント作成
+- [x] CI/CD パイプライン (GitHub Actions)
+- [x] 全テーブル対応 (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases)
+- [x] Dedup VIEW (players_latest, card_definitions_latest)
 
-### 📋 次のステップ
+### 次のステップ
 
 #### 1. Git リポジトリ初期化
 ```bash
 cd /Users/kenyamamoto/Documents/key_and_notes/overload-party-analytics
 git init
 git add .
-git commit -m "Initial commit: Analytics infrastructure
-
-- Terraform modules (BigQuery, Cloud Functions, Scheduler)
-- Export function (PostgreSQL → BigQuery)
-- Deployment scripts
-- Documentation"
+git commit -m "Initial commit: Analytics infrastructure"
 ```
 
 オプション: GitHub にプッシュ
@@ -50,29 +48,17 @@ terraform apply
 
 確認項目:
 - [ ] BigQuery dataset `analytics` が作成された
-- [ ] テーブル (games, game_events, players, matches, subscriptions, purchases) が作成された
-- [ ] GCS バケット (function-source, bq-staging) が作成された
+- [ ] 全テーブル (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases) が作成された
+- [ ] VIEW (players_latest, card_definitions_latest) が作成された
+- [ ] GCS バケット (bq-staging) が作成された
 - [ ] Service Account が作成された
 - [ ] IAM 権限が付与された
 
 ---
 
 #### 4. Cloud Function デプロイ
-```bash
-cd /Users/kenyamamoto/Documents/key_and_notes/overload-party-analytics
-./scripts/deploy.sh dev
-```
 
-出力された `source_archive` 変数をメモ:
-```bash
-# 例: export-function-20260219-143052.zip
-```
-
-Terraform 変数を更新:
-```bash
-cd terraform/environments/dev
-terraform apply -var="source_archive=export-function-YYYYMMDD-HHMMSS.zip"
-```
+main ブランチへの push で CI が自動デプロイします。
 
 ---
 
@@ -96,9 +82,6 @@ gcloud functions logs read export-postgres-to-bigquery-dev \
 ```bash
 bq query --use_legacy_sql=false \
   'SELECT COUNT(*) FROM `overload-party-dev.analytics.games`'
-
-bq query --use_legacy_sql=false \
-  'SELECT * FROM `overload-party-dev.analytics.games` LIMIT 10'
 ```
 
 ---
@@ -122,7 +105,7 @@ bq query --use_legacy_sql=false \
    - 「BigQuery」を選択
    - プロジェクト: `overload-party-dev`
    - データセット: `analytics`
-   - テーブル: `games`, `game_events`, `players` 等
+   - VIEW: `players_latest`, `card_definitions_latest` 等
 4. 主要指標を追加:
    - DAU (Daily Active Users)
    - カード使用率
@@ -157,17 +140,12 @@ gcloud alpha monitoring policies create \
 
 ## 今後の拡張
 
-### Phase 2: 追加テーブルのエクスポート
-- [ ] `card_definitions` テーブル追加
-- [ ] `decks` / `deck_cards` テーブル追加 (集約版)
-- [ ] `player_cards` テーブル追加
-
-### Phase 3: 分析の高度化
-- [ ] BigQuery View 作成 (事前集計済みビュー)
+### Phase 2: 分析の高度化
+- [ ] BigQuery View 追加 (事前集計済みビュー)
 - [ ] マテリアライズドビュー検討 (コスト vs 速度)
 - [ ] カスタムメトリクスの Cloud Monitoring 連携
 
-### Phase 4: 本番環境デプロイ
+### Phase 3: 本番環境デプロイ
 - [ ] `terraform/environments/prod/` 作成
 - [ ] 本番用 PostgreSQL DB への接続設定
 - [ ] 本番用アラート設定
@@ -208,17 +186,6 @@ gcloud projects get-iam-policy overload-party-dev \
 ---
 
 ## コスト管理
-
-### 月次コスト確認
-```bash
-# BigQuery コスト
-bq show --format=prettyjson overload-party-dev:analytics
-
-# Cloud Functions コスト
-gcloud functions describe export-postgres-to-bigquery-dev \
-  --region asia-northeast1 \
-  --format="value(serviceConfig.availableMemory,serviceConfig.timeoutSeconds)"
-```
 
 ### コスト最適化チェックリスト
 - [ ] BigQuery テーブルのパーティショニング有効化確認

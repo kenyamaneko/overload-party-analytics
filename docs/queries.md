@@ -18,10 +18,10 @@ Overload Party Analytics - よく使う分析クエリ
 
 ```sql
 SELECT
-  DATE(created_at) as date,
+  DATE(updated_at) as date,
   COUNT(DISTINCT player_id) as dau
 FROM `overload-party-dev.analytics.players`
-WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+WHERE updated_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
 ORDER BY date DESC;
 ```
@@ -30,10 +30,10 @@ ORDER BY date DESC;
 
 ```sql
 SELECT
-  FORMAT_DATE('%Y-%m', DATE(created_at)) as month,
+  FORMAT_DATE('%Y-%m', DATE(updated_at)) as month,
   COUNT(DISTINCT player_id) as mau
 FROM `overload-party-dev.analytics.players`
-WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
+WHERE updated_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
 GROUP BY month
 ORDER BY month DESC;
 ```
@@ -45,7 +45,7 @@ SELECT
   is_premium,
   COUNT(*) as user_count,
   ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) as percentage
-FROM `overload-party-dev.analytics.players`
+FROM `overload-party-dev.analytics.players_latest`
 GROUP BY is_premium;
 ```
 
@@ -55,11 +55,14 @@ GROUP BY is_premium;
 SELECT
   FORMAT_DATE('%Y-W%V', DATE(created_at)) as week,
   COUNT(*) as new_users
-FROM `overload-party-dev.analytics.players`
+FROM `overload-party-dev.analytics.players_latest`
 WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 WEEK)
 GROUP BY week
 ORDER BY week DESC;
 ```
+
+> **Note:** DAU/MAU は `players` テーブル (raw) の `updated_at` から集計します。
+> 「最新のプレイヤー状態」を参照する場合は `players_latest` VIEW を使用してください。
 
 ---
 
@@ -73,7 +76,7 @@ SELECT
   COUNT(*) as total_games,
   COUNT(DISTINCT player1_id) + COUNT(DISTINCT player2_id) as unique_players,
   ROUND(COUNT(*) / (COUNT(DISTINCT player1_id) + COUNT(DISTINCT player2_id)), 2) as avg_games_per_player
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
 ORDER BY date DESC;
@@ -86,7 +89,7 @@ SELECT
   status,
   COUNT(*) as count,
   ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) as percentage
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY status;
 ```
@@ -99,7 +102,7 @@ SELECT
   AVG(TIMESTAMP_DIFF(finished_at, created_at, MINUTE)) as avg_duration_minutes,
   MIN(TIMESTAMP_DIFF(finished_at, created_at, MINUTE)) as min_duration_minutes,
   MAX(TIMESTAMP_DIFF(finished_at, created_at, MINUTE)) as max_duration_minutes
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE finished_at IS NOT NULL
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY date
@@ -112,7 +115,7 @@ ORDER BY date DESC;
 SELECT
   EXTRACT(HOUR FROM created_at) as hour_of_day,
   COUNT(*) as game_count
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 GROUP BY hour_of_day
 ORDER BY hour_of_day;
@@ -157,7 +160,7 @@ SELECT
   COUNTIF(g.winner_id = cg.player_id) as wins,
   ROUND(COUNTIF(g.winner_id = cg.player_id) / COUNT(DISTINCT cg.game_id) * 100, 2) as win_rate_percentage
 FROM card_games cg
-JOIN `overload-party-dev.analytics.games` g ON cg.game_id = g.game_id
+JOIN `overload-party-dev.analytics.games_latest` g ON cg.game_id = g.game_id
 WHERE g.status = 'finished'
 GROUP BY cg.card_no
 HAVING games_used >= 10  -- 最低10ゲーム使用されたカードのみ
@@ -190,7 +193,7 @@ WITH active_subs AS (
   SELECT
     FORMAT_DATE('%Y-%m', DATE(current_period_start)) as month,
     COUNT(*) as active_subscriptions
-  FROM `overload-party-dev.analytics.subscriptions`
+  FROM `overload-party-dev.analytics.subscriptions_latest`
   WHERE status = 'active'
     AND current_period_start >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
   GROUP BY month
@@ -212,7 +215,7 @@ WITH monthly_subs AS (
     FORMAT_DATE('%Y-%m', DATE(created_at)) as month,
     COUNT(*) as new_subscriptions,
     COUNTIF(status = 'canceled' OR status = 'expired') as churned_subscriptions
-  FROM `overload-party-dev.analytics.subscriptions`
+  FROM `overload-party-dev.analytics.subscriptions_latest`
   WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
   GROUP BY month
 )
@@ -242,7 +245,7 @@ users AS (
   SELECT
     FORMAT_DATE('%Y-%m', DATE(created_at)) as month,
     COUNT(DISTINCT player_id) as total_users
-  FROM `overload-party-dev.analytics.players`
+  FROM `overload-party-dev.analytics.players_latest`
   WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
   GROUP BY month
 )
@@ -284,7 +287,7 @@ SELECT
   COUNT(*) AS total_games,
   COUNTIF(winner_id = player1_id) AS wins,
   ROUND(COUNTIF(winner_id = player1_id) / COUNT(*) * 100, 2) AS win_rate
-FROM `overload-party-dev.analytics.games`
+FROM `overload-party-dev.analytics.games_latest`
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY faction
@@ -300,7 +303,7 @@ WITH faction_matchups AS (
     JSON_EXTRACT_SCALAR(player2_deck_snapshot, '$.faction') AS faction2,
     winner_id,
     player1_id
-  FROM `overload-party-dev.analytics.games`
+  FROM `overload-party-dev.analytics.games_latest`
   WHERE status = 'finished'
     AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 )
@@ -342,7 +345,7 @@ SELECT
     (SELECT COUNT(DISTINCT CONCAT(player_id, '-', deck_id)) FROM `overload-party-dev.analytics.deck_cards`) * 100, 2
   ) AS adoption_rate
 FROM `overload-party-dev.analytics.deck_cards` dc
-JOIN `overload-party-dev.analytics.card_definitions` cd ON dc.card_no = cd.card_no
+JOIN `overload-party-dev.analytics.card_definitions_latest` cd ON dc.card_no = cd.card_no
 GROUP BY dc.card_no, cd.card_name, cd.faction, cd.card_type
 ORDER BY adoption_rate DESC;
 ```
@@ -356,7 +359,7 @@ SELECT
     (SELECT ge.event_data FROM `overload-party-dev.analytics.game_events` ge
      WHERE ge.game_id = g.game_id AND ge.event_type = 'game_end' LIMIT 1),
     '$.turnCount') AS INT64)) AS avg_turns
-FROM `overload-party-dev.analytics.games` g
+FROM `overload-party-dev.analytics.games_latest` g
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
@@ -376,8 +379,8 @@ WITH player_stats AS (
     p.is_premium,
     COUNTIF(g.winner_id = p.player_id) as wins,
     COUNT(g.game_id) as total_games
-  FROM `overload-party-dev.analytics.players` p
-  LEFT JOIN `overload-party-dev.analytics.games` g
+  FROM `overload-party-dev.analytics.players_latest` p
+  LEFT JOIN `overload-party-dev.analytics.games_latest` g
     ON (g.player1_id = p.player_id OR g.player2_id = p.player_id)
     AND g.status = 'finished'
     AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)

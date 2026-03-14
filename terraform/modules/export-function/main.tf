@@ -69,7 +69,7 @@ resource "google_cloudfunctions2_function" "export" {
   location = var.region
 
   build_config {
-    runtime     = "go121"
+    runtime     = "go122"
     entry_point = "ExportPostgresToBigQuery"
     source {
       storage_source {
@@ -96,6 +96,12 @@ resource "google_cloudfunctions2_function" "export" {
 
   labels = {
     env = var.env
+  }
+
+  # CI deploys the function source directly via gcloud.
+  # Prevent Terraform from reverting the build config on subsequent applies.
+  lifecycle {
+    ignore_changes = [build_config]
   }
 }
 
