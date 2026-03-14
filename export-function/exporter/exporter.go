@@ -144,22 +144,7 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string, s
 	}
 
 	// Determine time range
-	startTime := checkpoint.LastExportTime
-	endTime := time.Now()
-
-	if mode == "full" {
-		startTime = time.Time{}
-		if startDate != "" {
-			if t, err := time.Parse("2006-01-02", startDate); err == nil {
-				startTime = t
-			}
-		}
-		if endDate != "" {
-			if t, err := time.Parse("2006-01-02", endDate); err == nil {
-				endTime = t
-			}
-		}
-	}
+	startTime, endTime := resolveTimeRange(mode, startDate, endDate, checkpoint.LastExportTime, time.Now())
 
 	log.Printf("INFO: Exporting %s from %v to %v", table, startTime, endTime)
 
@@ -206,6 +191,28 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string, s
 
 	log.Printf("SUCCESS: Exported %d rows from %s", rowCount, table)
 	return rowCount, nil
+}
+
+// resolveTimeRange determines the query time range based on mode and parameters.
+func resolveTimeRange(mode string, startDate, endDate string, checkpointTime, now time.Time) (time.Time, time.Time) {
+	startTime := checkpointTime
+	endTime := now
+
+	if mode == "full" {
+		startTime = time.Time{}
+		if startDate != "" {
+			if t, err := time.Parse("2006-01-02", startDate); err == nil {
+				startTime = t
+			}
+		}
+		if endDate != "" {
+			if t, err := time.Parse("2006-01-02", endDate); err == nil {
+				endTime = t
+			}
+		}
+	}
+
+	return startTime, endTime
 }
 
 // Close closes all clients

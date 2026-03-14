@@ -7,12 +7,16 @@ import (
 	"time"
 )
 
-// writeToGCS writes rows to GCS in JSONL format
-func (e *Exporter) writeToGCS(ctx context.Context, table string, rows []map[string]interface{}, timestamp time.Time) (string, error) {
-	// Build GCS path: exports/YYYYMMDD/table/HHmmss.jsonl
+// gcsObjectPath builds the GCS object path: exports/YYYYMMDD/table/HHmmss.jsonl
+func gcsObjectPath(table string, timestamp time.Time) string {
 	datePath := timestamp.Format("20060102")
 	timePath := timestamp.Format("150405")
-	objectPath := fmt.Sprintf("exports/%s/%s/%s.jsonl", datePath, table, timePath)
+	return fmt.Sprintf("exports/%s/%s/%s.jsonl", datePath, table, timePath)
+}
+
+// writeToGCS writes rows to GCS in JSONL format
+func (e *Exporter) writeToGCS(ctx context.Context, table string, rows []map[string]interface{}, timestamp time.Time) (string, error) {
+	objectPath := gcsObjectPath(table, timestamp)
 
 	bucket := e.gcsClient.Bucket(e.config.GCSBucket)
 	obj := bucket.Object(objectPath)

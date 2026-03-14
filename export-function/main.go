@@ -30,26 +30,29 @@ type ExportResponse struct {
 	Message string                  `json:"message"`
 }
 
+// parseExportRequest decodes and validates the export request body.
+func parseExportRequest(r *http.Request) (*ExportRequest, error) {
+	var req ExportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return nil, fmt.Errorf("invalid request: %w", err)
+	}
+	if len(req.Tables) == 0 {
+		return nil, fmt.Errorf("no tables specified")
+	}
+	if req.Mode == "" {
+		req.Mode = "incremental"
+	}
+	return &req, nil
+}
+
 func exportHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := context.Background()
 
-	// Parse request
-	var req ExportRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("ERROR: invalid request body: %v", err)
-		http.Error(w, fmt.Sprintf("invalid request: %v", err), http.StatusBadRequest)
+	req, err := parseExportRequest(r)
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
-	}
-
-	// Validate request
-	if len(req.Tables) == 0 {
-		log.Printf("ERROR: no tables specified")
-		http.Error(w, "no tables specified", http.StatusBadRequest)
-		return
-	}
-
-	if req.Mode == "" {
-		req.Mode = "incremental"
 	}
 
 	log.Printf("INFO: Starting export - tables=%v, mode=%s, start_date=%s, end_date=%s", req.Tables, req.Mode, req.StartDate, req.EndDate)
