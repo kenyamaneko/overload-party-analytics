@@ -144,7 +144,10 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string, s
 	}
 
 	// Determine time range
-	startTime, endTime := resolveTimeRange(mode, startDate, endDate, checkpoint.LastExportTime, time.Now())
+	startTime, endTime, err := resolveTimeRange(mode, startDate, endDate, checkpoint.LastExportTime, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("resolve time range: %w", err)
+	}
 
 	log.Printf("INFO: Exporting %s from %v to %v", table, startTime, endTime)
 
@@ -194,25 +197,29 @@ func (e *Exporter) exportTable(ctx context.Context, table string, mode string, s
 }
 
 // resolveTimeRange determines the query time range based on mode and parameters.
-func resolveTimeRange(mode string, startDate, endDate string, checkpointTime, now time.Time) (time.Time, time.Time) {
+func resolveTimeRange(mode string, startDate, endDate string, checkpointTime, now time.Time) (time.Time, time.Time, error) {
 	startTime := checkpointTime
 	endTime := now
 
 	if mode == "full" {
 		startTime = time.Time{}
 		if startDate != "" {
-			if t, err := time.Parse("2006-01-02", startDate); err == nil {
-				startTime = t
+			t, err := time.Parse("2006-01-02", startDate)
+			if err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid start_date %q: %w", startDate, err)
 			}
+			startTime = t
 		}
 		if endDate != "" {
-			if t, err := time.Parse("2006-01-02", endDate); err == nil {
-				endTime = t
+			t, err := time.Parse("2006-01-02", endDate)
+			if err != nil {
+				return time.Time{}, time.Time{}, fmt.Errorf("invalid end_date %q: %w", endDate, err)
 			}
+			endTime = t
 		}
 	}
 
-	return startTime, endTime
+	return startTime, endTime, nil
 }
 
 // Close closes all clients
