@@ -9,13 +9,13 @@
 - [x] ドキュメント作成
 - [x] CI/CD パイプライン (GitHub Actions)
 - [x] 全テーブル対応 (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases)
-- [x] Dedup VIEW (players_latest, card_definitions_latest)
+- [x] Dedup VIEW (games_latest, subscriptions_latest, players_latest, card_definitions_latest)
 
 ### 次のステップ
 
 #### 1. Git リポジトリ初期化
 ```bash
-cd /Users/kenyamamoto/Documents/key_and_notes/overload-party-analytics
+cd overload-party-analytics
 git init
 git add .
 git commit -m "Initial commit: Analytics infrastructure"
@@ -49,7 +49,7 @@ terraform apply
 確認項目:
 - [ ] BigQuery dataset `analytics` が作成された
 - [ ] 全テーブル (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases) が作成された
-- [ ] VIEW (players_latest, card_definitions_latest) が作成された
+- [ ] VIEW (games_latest, subscriptions_latest, players_latest, card_definitions_latest) が作成された
 - [ ] GCS バケット (bq-staging) が作成された
 - [ ] Service Account が作成された
 - [ ] IAM 権限が付与された

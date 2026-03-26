@@ -1,4 +1,4 @@
-package exporter
+package adapter
 
 import (
 	"context"
@@ -8,11 +8,27 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"export-to-bq/exporter/model"
 )
 
-// queryPostgres executes an incremental query against PostgreSQL
-func (e *Exporter) queryPostgres(ctx context.Context, tableConfig TableConfig, startTime, endTime time.Time) ([]map[string]interface{}, error) {
-	rows, err := e.pgPool.Query(ctx, tableConfig.Query, startTime, endTime)
+// PostgresReader reads data from PostgreSQL.
+type PostgresReader struct {
+	pool *pgxpool.Pool
+}
+
+// NewPostgresReader creates a new PostgresReader.
+func NewPostgresReader(ctx context.Context, config *model.Config) (*PostgresReader, error) {
+	pool, err := newPgPool(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	return &PostgresReader{pool: pool}, nil
+}
+
+// Query executes the table's query with the given time range.
+func (r *PostgresReader) Query(ctx context.Context, tableConfig model.TableConfig, startTime, endTime time.Time) ([]map[string]interface{}, error) {
+	rows, err := r.pool.Query(ctx, tableConfig.Query, startTime, endTime)
 	if err != nil {
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
@@ -21,7 +37,11 @@ func (e *Exporter) queryPostgres(ctx context.Context, tableConfig TableConfig, s
 	return pgRowsToMaps(rows)
 }
 
-// pgRowsToMaps converts pgx rows to a slice of maps
+// Close closes the connection pool.
+func (r *PostgresReader) Close() {
+	r.pool.Close()
+}
+
 func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 	fieldDescs := rows.FieldDescriptions()
 	var result []map[string]interface{}
@@ -43,7 +63,6 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 				// an unescaped JSON object instead of a quoted string.
 				val = json.RawMessage(v)
 			case map[string]interface{}:
-				// pgx may also decode JSONB into a map
 				val = v
 			}
 			rowMap[fd.Name] = val
@@ -58,18 +77,15 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-// newPgPool creates a new pgx connection pool
-func newPgPool(ctx context.Context, config *Config) (*pgxpool.Pool, error) {
+func newPgPool(ctx context.Context, config *model.Config) (*pgxpool.Pool, error) {
 	var dsn string
 
 	if config.InstanceConnectionName != "" {
-		// Cloud SQL via Unix socket (Cloud Functions / Cloud Run)
 		dsn = fmt.Sprintf(
 			"host=/cloudsql/%s user=%s password=%s dbname=%s sslmode=disable",
 			config.InstanceConnectionName, config.DBUser, config.DBPassword, config.DBName,
 		)
 	} else {
-		// Direct TCP connection (local dev with Cloud SQL Auth Proxy)
 		host := config.DBHost
 		if host == "" {
 			host = "localhost"

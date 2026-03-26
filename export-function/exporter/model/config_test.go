@@ -1,8 +1,9 @@
-package exporter
+package model
 
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -22,12 +23,10 @@ tables:
   games:
     source_table: games
     bigquery_table: games
-    timestamp_column: created_at
     query: "SELECT * FROM games WHERE created_at >= $1 AND created_at < $2"
   players:
     source_table: players
     bigquery_table: players
-    timestamp_column: updated_at
     query: "SELECT * FROM players WHERE updated_at >= $1 AND updated_at < $2"
 `)
 
@@ -46,9 +45,6 @@ tables:
 	}
 	if games.BigQueryTable != "games" {
 		t.Errorf("bigquery_table: got %q, want %q", games.BigQueryTable, "games")
-	}
-	if games.TimestampColumn != "created_at" {
-		t.Errorf("timestamp_column: got %q, want %q", games.TimestampColumn, "created_at")
 	}
 	if games.Query == "" {
 		t.Error("query should not be empty")
@@ -134,21 +130,7 @@ tables:
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	// Error message should identify which table has the problem
-	if got := err.Error(); !contains(got, "my_custom_table") {
+	if got := err.Error(); !strings.Contains(got, "my_custom_table") {
 		t.Errorf("error should mention table name 'my_custom_table', got: %s", got)
 	}
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

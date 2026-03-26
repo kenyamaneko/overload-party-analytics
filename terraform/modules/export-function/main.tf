@@ -1,13 +1,3 @@
-terraform {
-  required_version = ">= 1.5"
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = "~> 5.0"
-    }
-  }
-}
-
 resource "google_project_service" "cloudfunctions" {
   project            = var.project_id
   service            = "cloudfunctions.googleapis.com"

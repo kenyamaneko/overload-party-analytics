@@ -2,7 +2,6 @@ tables:
   games:
     source_table: games
     bigquery_table: games
-    timestamp_column: updated_at
     query: |
       SELECT
         game_id, player1_id, player2_id,
@@ -16,7 +15,6 @@ tables:
   game_events:
     source_table: game_events
     bigquery_table: game_events
-    timestamp_column: created_at
     query: |
       SELECT
         game_id, sequence_number, event_type, player_id,
@@ -29,7 +27,6 @@ tables:
   players:
     source_table: players
     bigquery_table: players
-    timestamp_column: updated_at
     query: |
       SELECT
         player_id, firebase_uid, username, level, exp, wins, losses,
@@ -42,7 +39,6 @@ tables:
   matches:
     source_table: matches
     bigquery_table: matches
-    timestamp_column: created_at
     query: |
       SELECT
         match_id, game_id, created_at
@@ -53,7 +49,6 @@ tables:
   card_definitions:
     source_table: card_definitions
     bigquery_table: card_definitions
-    timestamp_column: updated_at
     query: |
       SELECT
         card_no, card_name, resource_label, faction, card_type,
@@ -70,7 +65,6 @@ tables:
   deck_cards:
     source_table: deck_cards
     bigquery_table: deck_cards
-    timestamp_column: created_at
     query: |
       SELECT
         dc.player_id, dc.deck_id, dc.card_no, dc.art_no, dc.count,
@@ -83,7 +77,6 @@ tables:
   subscriptions:
     source_table: subscriptions
     bigquery_table: subscriptions
-    timestamp_column: updated_at
     query: |
       SELECT
         player_id, subscription_id, product_id, platform, purchase_token,
@@ -96,7 +89,6 @@ tables:
   purchases:
     source_table: one_time_purchases
     bigquery_table: purchases
-    timestamp_column: purchased_at
     query: |
       SELECT
         player_id, purchase_id, product_id, platform, purchase_token,

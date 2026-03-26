@@ -1,4 +1,4 @@
-package exporter
+package adapter
 
 import (
 	"encoding/json"
@@ -188,13 +188,11 @@ func TestPgRowsToMaps_JSONBNotDoubleEncoded(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Simulate what writeToGCS does: json.Marshal each row
 	encoded, err := json.Marshal(result[0])
 	if err != nil {
 		t.Fatalf("json.Marshal: %v", err)
 	}
 
-	// Parse back and verify deck_snapshot is a JSON object, not a string
 	var parsed map[string]interface{}
 	if err := json.Unmarshal(encoded, &parsed); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)

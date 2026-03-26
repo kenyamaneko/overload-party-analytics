@@ -68,5 +68,6 @@ jobs:
             --project ${{ env.PROJECT }} \
             --runtime ${{ steps.gomod.outputs.runtime }} \
             --entry-point ExportPostgresToBigQuery \
+            --trigger-http \
             --source export-function/ \
             --quiet

@@ -1,4 +1,4 @@
-package exporter
+package model
 
 import (
 	"fmt"
@@ -7,30 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the export configuration
-type Config struct {
-	Tables map[string]TableConfig `yaml:"tables"`
-
-	// Runtime configuration (from environment variables)
-	DBHost                 string
-	DBUser                 string
-	DBPassword             string
-	DBName                 string
-	InstanceConnectionName string
-	BQProjectID            string
-	BQDatasetID            string
-	GCSBucket              string
-}
-
-// TableConfig represents the configuration for a single table
-type TableConfig struct {
-	SourceTable     string `yaml:"source_table"`
-	BigQueryTable   string `yaml:"bigquery_table"`
-	TimestampColumn string `yaml:"timestamp_column"`
-	Query           string `yaml:"query"`
-}
-
-// LoadConfig loads the configuration from a YAML file
+// LoadConfig loads the configuration from a YAML file.
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

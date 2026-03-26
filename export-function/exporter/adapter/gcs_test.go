@@ -1,4 +1,4 @@
-package exporter
+package adapter
 
 import (
 	"testing"
@@ -16,19 +16,25 @@ func TestGcsObjectPath(t *testing.T) {
 			name:      "standard path",
 			table:     "games",
 			timestamp: time.Date(2025, 3, 14, 9, 5, 30, 0, time.UTC),
-			want:      "exports/20250314/games/090530.jsonl",
+			want:      "exports/20250314/games/090530.000.jsonl",
 		},
 		{
 			name:      "midnight",
 			table:     "game_events",
 			timestamp: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:      "exports/20250101/game_events/000000.jsonl",
+			want:      "exports/20250101/game_events/000000.000.jsonl",
 		},
 		{
 			name:      "end of day",
 			table:     "players",
 			timestamp: time.Date(2025, 12, 31, 23, 59, 59, 0, time.UTC),
-			want:      "exports/20251231/players/235959.jsonl",
+			want:      "exports/20251231/players/235959.000.jsonl",
+		},
+		{
+			name:      "with milliseconds",
+			table:     "games",
+			timestamp: time.Date(2025, 3, 14, 9, 5, 30, 123000000, time.UTC),
+			want:      "exports/20250314/games/090530.123.jsonl",
 		},
 	}
 
