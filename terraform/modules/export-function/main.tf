@@ -8,6 +8,18 @@ terraform {
   }
 }
 
+resource "google_project_service" "cloudfunctions" {
+  project            = var.project_id
+  service            = "cloudfunctions.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "cloudbuild" {
+  project            = var.project_id
+  service            = "cloudbuild.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Service Account for Export Function
 resource "google_service_account" "export_function" {
   project      = var.project_id
@@ -87,10 +99,10 @@ resource "google_cloudfunctions2_function" "export" {
     service_account_email = google_service_account.export_function.email
 
     environment_variables = {
-      BQ_PROJECT_ID    = var.project_id
-      BQ_DATASET_ID    = var.bq_dataset_id
-      GCS_BUCKET       = google_storage_bucket.staging.name
-      ENV              = var.env
+      BQ_PROJECT_ID = var.project_id
+      BQ_DATASET_ID = var.bq_dataset_id
+      GCS_BUCKET    = google_storage_bucket.staging.name
+      ENV           = var.env
     }
   }
 

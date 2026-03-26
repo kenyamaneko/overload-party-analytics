@@ -8,6 +8,12 @@ terraform {
   }
 }
 
+resource "google_project_service" "cloudscheduler" {
+  project            = var.project_id
+  service            = "cloudscheduler.googleapis.com"
+  disable_on_destroy = false
+}
+
 # Hourly export for high-frequency tables (game_events)
 resource "google_cloud_scheduler_job" "export_hourly" {
   project          = var.project_id
