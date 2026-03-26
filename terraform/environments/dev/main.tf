@@ -8,8 +8,8 @@ terraform {
   }
 
   backend "gcs" {
-    bucket = "overload-party-analytics-terraform-state"
-    prefix = "terraform/state/dev"
+    bucket = "keyandnotes-tf-state"
+    prefix = "overload-party/analytics/dev"
   }
 }
 
