@@ -51,7 +51,7 @@ tables:
     bigquery_table: card_definitions
     query: |
       SELECT
-        card_no, card_name, resource_label, faction, card_type,
+        card_id, card_name, resource_label, faction, card_type,
         resizable, elastic,
         stats,
         effect_text,
@@ -67,7 +67,7 @@ tables:
     bigquery_table: deck_cards
     query: |
       SELECT
-        dc.player_id, dc.deck_id, dc.card_no, dc.art_no, dc.count,
+        dc.player_id, dc.deck_id, dc.card_id, dc.art_no, dc.count,
         d.deck_name, d.is_valid, d.created_at
       FROM deck_cards dc
       JOIN decks d ON dc.player_id = d.player_id AND dc.deck_id = d.deck_id

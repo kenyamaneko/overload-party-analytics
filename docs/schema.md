@@ -130,7 +130,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 | Column | Type | Mode | Description |
 |--------|------|------|-------------|
-| card_no | INT64 | REQUIRED | カード番号 |
+| card_id | STRING | REQUIRED | カード ID (例: SH-0001) |
 | card_name | STRING | REQUIRED | カード名 |
 | resource_label | STRING | NULLABLE | リソースラベル |
 | faction | STRING | REQUIRED | 所属陣営 |
@@ -163,7 +163,7 @@ Overload Party Analytics - BigQuery テーブル定義
 |--------|------|------|-------------|
 | player_id | STRING | REQUIRED | プレイヤー ID |
 | deck_id | INT64 | REQUIRED | デッキ ID |
-| card_no | INT64 | REQUIRED | カード番号 |
+| card_id | STRING | REQUIRED | カード ID (例: SH-0001) |
 | art_no | INT64 | NULLABLE | アート番号 |
 | count | INT64 | REQUIRED | 枚数 |
 | deck_name | STRING | NULLABLE | デッキ名 |
@@ -171,7 +171,7 @@ Overload Party Analytics - BigQuery テーブル定義
 | created_at | TIMESTAMP | REQUIRED | デッキ作成日時 |
 
 **Partitioning:** created_at (DAY)
-**Clustering:** player_id, card_no
+**Clustering:** player_id, card_id
 
 **分析用途:**
 - カード採用率
@@ -269,11 +269,11 @@ SELECT * EXCEPT(rn) FROM (
 
 ### card_definitions_latest
 
-card_definitions テーブルから card_no ごとに最新の 1 行を返す VIEW。
+card_definitions テーブルから card_id ごとに最新の 1 行を返す VIEW。
 
 ```sql
 SELECT * EXCEPT(rn) FROM (
-  SELECT *, ROW_NUMBER() OVER (PARTITION BY card_no ORDER BY updated_at DESC) AS rn
+  SELECT *, ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY updated_at DESC) AS rn
   FROM analytics.card_definitions
 ) WHERE rn = 1
 ```
