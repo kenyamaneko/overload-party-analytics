@@ -129,14 +129,14 @@ ORDER BY hour_of_day;
 
 ```sql
 SELECT
-  JSON_EXTRACT_SCALAR(event_data, '$.cardNo') as card_no,
+  JSON_EXTRACT_SCALAR(event_data, '$.cardId') as card_id,
   COUNT(*) as play_count,
   COUNT(DISTINCT game_id) as games_used_in,
   ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) as usage_percentage
 FROM `overload-party-dev.analytics.game_events`
 WHERE event_type = 'play_card'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-GROUP BY card_no
+GROUP BY card_id
 ORDER BY play_count DESC
 LIMIT 20;
 ```
@@ -147,22 +147,22 @@ LIMIT 20;
 WITH card_games AS (
   SELECT
     ge.game_id,
-    JSON_EXTRACT_SCALAR(ge.event_data, '$.cardNo') as card_no,
+    JSON_EXTRACT_SCALAR(ge.event_data, '$.cardId') as card_id,
     ge.player_id
   FROM `overload-party-dev.analytics.game_events` ge
   WHERE ge.event_type = 'play_card'
     AND ge.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-  GROUP BY ge.game_id, card_no, ge.player_id
+  GROUP BY ge.game_id, card_id, ge.player_id
 )
 SELECT
-  cg.card_no,
+  cg.card_id,
   COUNT(DISTINCT cg.game_id) as games_used,
   COUNTIF(g.winner_id = cg.player_id) as wins,
   ROUND(COUNTIF(g.winner_id = cg.player_id) / COUNT(DISTINCT cg.game_id) * 100, 2) as win_rate_percentage
 FROM card_games cg
 JOIN `overload-party-dev.analytics.games_latest` g ON cg.game_id = g.game_id
 WHERE g.status = 'finished'
-GROUP BY cg.card_no
+GROUP BY cg.card_id
 HAVING games_used >= 10  -- 最低10ゲーム使用されたカードのみ
 ORDER BY win_rate_percentage DESC;
 ```
@@ -336,7 +336,7 @@ ORDER BY count DESC;
 
 ```sql
 SELECT
-  dc.card_no,
+  dc.card_id,
   cd.card_name,
   cd.faction,
   cd.card_type,
@@ -345,8 +345,8 @@ SELECT
     (SELECT COUNT(DISTINCT CONCAT(player_id, '-', deck_id)) FROM `overload-party-dev.analytics.deck_cards`) * 100, 2
   ) AS adoption_rate
 FROM `overload-party-dev.analytics.deck_cards` dc
-JOIN `overload-party-dev.analytics.card_definitions_latest` cd ON dc.card_no = cd.card_no
-GROUP BY dc.card_no, cd.card_name, cd.faction, cd.card_type
+JOIN `overload-party-dev.analytics.card_definitions_latest` cd ON dc.card_id = cd.card_id
+GROUP BY dc.card_id, cd.card_name, cd.faction, cd.card_type
 ORDER BY adoption_rate DESC;
 ```
 

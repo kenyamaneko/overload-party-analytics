@@ -158,13 +158,13 @@ ORDER BY win_rate DESC;
 
 -- カード使用率 (トップ 20)
 SELECT
-  JSON_EXTRACT_SCALAR(event_data, '$.cardNo') AS card_no,
+  JSON_EXTRACT_SCALAR(event_data, '$.cardId') AS card_id,
   COUNT(*) AS play_count,
   COUNT(DISTINCT game_id) AS games_used_in
 FROM `overload-party-dev.analytics.game_events`
 WHERE event_type = 'play_card'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-GROUP BY card_no
+GROUP BY card_id
 ORDER BY play_count DESC
 LIMIT 20;
 

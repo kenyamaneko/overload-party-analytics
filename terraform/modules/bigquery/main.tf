@@ -182,7 +182,7 @@ resource "google_bigquery_table" "card_definitions" {
   clustering = ["faction", "card_type"]
 
   schema = jsonencode([
-    { name = "card_no", type = "INT64", mode = "REQUIRED" },
+    { name = "card_id", type = "STRING", mode = "REQUIRED" },
     { name = "card_name", type = "STRING", mode = "REQUIRED" },
     { name = "resource_label", type = "STRING", mode = "NULLABLE" },
     { name = "faction", type = "STRING", mode = "REQUIRED" },
@@ -214,12 +214,12 @@ resource "google_bigquery_table" "deck_cards" {
     field = "created_at"
   }
 
-  clustering = ["player_id", "card_no"]
+  clustering = ["player_id", "card_id"]
 
   schema = jsonencode([
     { name = "player_id", type = "STRING", mode = "REQUIRED" },
     { name = "deck_id", type = "INT64", mode = "REQUIRED" },
-    { name = "card_no", type = "INT64", mode = "REQUIRED" },
+    { name = "card_id", type = "STRING", mode = "REQUIRED" },
     { name = "art_no", type = "INT64", mode = "NULLABLE" },
     { name = "count", type = "INT64", mode = "REQUIRED" },
     { name = "deck_name", type = "STRING", mode = "NULLABLE" },
@@ -328,7 +328,7 @@ resource "google_bigquery_table" "players_latest" {
   depends_on = [google_bigquery_table.players]
 }
 
-# Card Definitions Latest View (dedup: one row per card_no)
+# Card Definitions Latest View (dedup: one row per card_id)
 resource "google_bigquery_table" "card_definitions_latest" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
@@ -337,7 +337,7 @@ resource "google_bigquery_table" "card_definitions_latest" {
   view {
     query          = <<-SQL
       SELECT * EXCEPT(rn) FROM (
-        SELECT *, ROW_NUMBER() OVER (PARTITION BY card_no ORDER BY updated_at DESC) AS rn
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY updated_at DESC) AS rn
         FROM `${var.project_id}.${var.dataset_id}.card_definitions`
       ) WHERE rn = 1
     SQL
