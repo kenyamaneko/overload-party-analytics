@@ -105,6 +105,11 @@ resource "google_cloudfunctions2_function" "export" {
   lifecycle {
     ignore_changes = [build_config]
   }
+
+  depends_on = [
+    google_project_service.cloudfunctions,
+    google_project_service.cloudbuild,
+  ]
 }
 
 # IAM: GCS Object Creator (staging bucket)

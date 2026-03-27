@@ -34,6 +34,8 @@ resource "google_cloud_scheduler_job" "export_hourly" {
     min_backoff_duration = "5s"
     max_backoff_duration = "3600s"
   }
+
+  depends_on = [google_project_service.cloudscheduler]
 }
 
 # Daily export for slower-changing tables
@@ -74,4 +76,6 @@ resource "google_cloud_scheduler_job" "export_daily" {
     min_backoff_duration = "5s"
     max_backoff_duration = "3600s"
   }
+
+  depends_on = [google_project_service.cloudscheduler]
 }

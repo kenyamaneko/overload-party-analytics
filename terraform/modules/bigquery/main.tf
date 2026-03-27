@@ -17,6 +17,8 @@ resource "google_bigquery_dataset" "analytics" {
   labels = {
     env = var.env
   }
+
+  depends_on = [google_project_service.bigquery]
 }
 
 # Games Table (append-only, use games_latest view for current state)
