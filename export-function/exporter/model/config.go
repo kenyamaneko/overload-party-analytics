@@ -3,11 +3,16 @@ package model
 import (
 	"fmt"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
 
-// LoadConfig loads the configuration from a YAML file.
+// safeIdentifier は MERGE DDL への SQL インジェクションを防ぐため、
+// BigQuery 識別子として安全な文字列パターンを定義します。
+var safeIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// LoadConfig は YAML ファイルからエクスポート設定を読み込みます。
 func LoadConfig(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -30,8 +35,16 @@ func LoadConfig(path string) (*Config, error) {
 		if table.BigQueryTable == "" {
 			return nil, fmt.Errorf("table %s: bigquery_table is required", name)
 		}
+		if !safeIdentifier.MatchString(table.BigQueryTable) {
+			return nil, fmt.Errorf("table %s: bigquery_table %q is not a valid identifier", name, table.BigQueryTable)
+		}
 		if table.Query == "" {
 			return nil, fmt.Errorf("table %s: query is required", name)
+		}
+		for _, col := range table.NaturalKey {
+			if !safeIdentifier.MatchString(col) {
+				return nil, fmt.Errorf("table %s: natural_key column %q is not a valid identifier", name, col)
+			}
 		}
 	}
 

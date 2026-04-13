@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// mockRows implements pgx.Rows for testing pgRowsToMaps.
+// mockRows は pgRowsToMaps テスト用の pgx.Rows 実装です。
 type mockRows struct {
 	fields []pgconn.FieldDescription
 	data   [][]any
@@ -173,9 +173,9 @@ func TestPgRowsToMaps_MultipleRows(t *testing.T) {
 	}
 }
 
-// TestPgRowsToMaps_JSONBNotDoubleEncoded verifies that JSONB data
-// preserved as json.RawMessage is NOT double-encoded when the row
-// is serialized to JSONL (the format written to GCS for BigQuery).
+// TestPgRowsToMaps_JSONBNotDoubleEncoded は json.RawMessage として保持した
+// JSONB データが JSONL (GCS → BigQuery) シリアライズ時に二重エンコードされない
+// ことを検証します。
 func TestPgRowsToMaps_JSONBNotDoubleEncoded(t *testing.T) {
 	jsonData := []byte(`{"faction":"tech","level":5}`)
 	rows := newMockRows(

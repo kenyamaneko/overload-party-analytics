@@ -1,9 +1,144 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
+
+	"export-to-bq/exporter/model"
 )
+
+// テスト用モック
+
+type stubSource struct {
+	rows []map[string]interface{}
+}
+
+func (s *stubSource) Query(_ context.Context, _ model.TableConfig, _, _ time.Time) ([]map[string]interface{}, error) {
+	return s.rows, nil
+}
+func (s *stubSource) Close() {}
+
+type stubStaging struct {
+	deleted []string
+}
+
+func (s *stubStaging) Write(_ context.Context, _ string, _ []map[string]interface{}, _ time.Time) (string, error) {
+	return "gs://stub-bucket/exports/stub.jsonl", nil
+}
+func (s *stubStaging) Delete(_ context.Context, uri string) error {
+	s.deleted = append(s.deleted, uri)
+	return nil
+}
+func (s *stubStaging) Close() error { return nil }
+
+type stubWarehouse struct {
+	lastMode model.DedupMode
+}
+
+func (s *stubWarehouse) Load(_ context.Context, _ model.TableConfig, _ string, mode model.DedupMode) error {
+	s.lastMode = mode
+	return nil
+}
+func (s *stubWarehouse) Close() error { return nil }
+
+type stubCheckpoint struct {
+	updateErr error
+	updated   bool
+}
+
+func (s *stubCheckpoint) Get(_ context.Context, table string) (*model.Checkpoint, error) {
+	return &model.Checkpoint{Table: table}, nil
+}
+func (s *stubCheckpoint) Update(_ context.Context, _ string, _ *model.Checkpoint) error {
+	s.updated = true
+	return s.updateErr
+}
+func (s *stubCheckpoint) Close() error { return nil }
+
+func newTestConfig() *model.Config {
+	return &model.Config{
+		Tables: map[string]model.TableConfig{
+			"games": {
+				SourceTable:   "games",
+				BigQueryTable: "games",
+				Query:         "SELECT 1 WHERE $1 < $2",
+				NaturalKey:    []string{"game_id"},
+			},
+		},
+		DedupMode: model.DedupModeMerge,
+	}
+}
+
+// テスト
+
+func TestExport_CheckpointFailureEscalates(t *testing.T) {
+	cfg := newTestConfig()
+	src := &stubSource{rows: []map[string]interface{}{{"game_id": "g1"}}}
+	stg := &stubStaging{}
+	wh := &stubWarehouse{}
+	cp := &stubCheckpoint{updateErr: errors.New("firestore: UNAVAILABLE")}
+
+	svc := New(cfg, src, stg, wh, cp)
+	results := svc.Export(context.Background(), []string{"games"}, "incremental", "", "")
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	r := results[0]
+	if r.Success {
+		t.Error("expected Success=false on checkpoint failure")
+	}
+	if !r.CheckpointFailed {
+		t.Error("expected CheckpointFailed=true")
+	}
+	if r.Error == "" || !errorContains(r.Error, "checkpoint update failed") {
+		t.Errorf("expected error to wrap ErrCheckpointUpdate, got: %q", r.Error)
+	}
+}
+
+func TestExport_FullModeSkipsCheckpointUpdate(t *testing.T) {
+	cfg := newTestConfig()
+	src := &stubSource{rows: []map[string]interface{}{{"game_id": "g1"}}}
+	stg := &stubStaging{}
+	wh := &stubWarehouse{}
+	cp := &stubCheckpoint{updateErr: errors.New("should not be called")}
+
+	svc := New(cfg, src, stg, wh, cp)
+	results := svc.Export(context.Background(), []string{"games"}, "full", "2024-01-01", "2024-02-01")
+
+	if len(results) != 1 || !results[0].Success {
+		t.Fatalf("expected success in full mode, got %+v", results)
+	}
+	if cp.updated {
+		t.Error("checkpoint.Update should not be called in full (backfill) mode")
+	}
+}
+
+func TestExport_StagingDeletedAfterSuccess(t *testing.T) {
+	cfg := newTestConfig()
+	src := &stubSource{rows: []map[string]interface{}{{"game_id": "g1"}}}
+	stg := &stubStaging{}
+	wh := &stubWarehouse{}
+	cp := &stubCheckpoint{}
+
+	svc := New(cfg, src, stg, wh, cp)
+	_ = svc.Export(context.Background(), []string{"games"}, "incremental", "", "")
+
+	if len(stg.deleted) != 1 {
+		t.Fatalf("expected 1 staging delete, got %d", len(stg.deleted))
+	}
+}
+
+func errorContains(haystack, needle string) bool {
+	for i := 0; i+len(needle) <= len(haystack); i++ {
+		if haystack[i:i+len(needle)] == needle {
+			return true
+		}
+	}
+	return false
+}
 
 func TestResolveTimeRange_Incremental(t *testing.T) {
 	checkpoint := time.Date(2025, 3, 10, 3, 0, 0, 0, time.UTC)

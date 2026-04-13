@@ -8,6 +8,7 @@ require (
 	cloud.google.com/go/storage v1.37.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.8.0
 	github.com/jackc/pgx/v5 v5.7.2
+	google.golang.org/api v0.162.0
 	google.golang.org/grpc v1.61.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -60,7 +61,6 @@ require (
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
-	google.golang.org/api v0.162.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240125205218-1f4bbc51befe // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240205150955-31a09d347014 // indirect

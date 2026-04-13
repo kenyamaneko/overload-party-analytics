@@ -12,12 +12,12 @@ import (
 	"export-to-bq/exporter/model"
 )
 
-// PostgresReader reads data from PostgreSQL.
+// PostgresReader は PostgreSQL からデータを読み取ります。
 type PostgresReader struct {
 	pool *pgxpool.Pool
 }
 
-// NewPostgresReader creates a new PostgresReader.
+// NewPostgresReader は新しい PostgresReader を生成します。
 func NewPostgresReader(ctx context.Context, config *model.Config) (*PostgresReader, error) {
 	pool, err := newPgPool(ctx, config)
 	if err != nil {
@@ -26,7 +26,7 @@ func NewPostgresReader(ctx context.Context, config *model.Config) (*PostgresRead
 	return &PostgresReader{pool: pool}, nil
 }
 
-// Query executes the table's query with the given time range.
+// Query は指定時間範囲でテーブルのクエリを実行します。
 func (r *PostgresReader) Query(ctx context.Context, tableConfig model.TableConfig, startTime, endTime time.Time) ([]map[string]interface{}, error) {
 	rows, err := r.pool.Query(ctx, tableConfig.Query, startTime, endTime)
 	if err != nil {
@@ -37,7 +37,7 @@ func (r *PostgresReader) Query(ctx context.Context, tableConfig model.TableConfi
 	return pgRowsToMaps(rows)
 }
 
-// Close closes the connection pool.
+// Close はコネクションプールをクローズします。
 func (r *PostgresReader) Close() {
 	r.pool.Close()
 }
@@ -59,8 +59,7 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 			case time.Time:
 				val = v.Format(time.RFC3339Nano)
 			case []byte:
-				// JSONB columns: preserve as raw JSON so json.Encode writes
-				// an unescaped JSON object instead of a quoted string.
+				// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
 				val = json.RawMessage(v)
 			case map[string]interface{}:
 				val = v

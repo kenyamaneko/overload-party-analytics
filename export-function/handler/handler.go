@@ -11,7 +11,7 @@ import (
 	"export-to-bq/exporter/service"
 )
 
-// ExportRequest defines the request payload for the export function.
+// ExportRequest はエクスポート関数のリクエストペイロードです。
 type ExportRequest struct {
 	Tables    []string `json:"tables"`
 	Mode      string   `json:"mode"`       // "incremental" or "full"
@@ -19,14 +19,14 @@ type ExportRequest struct {
 	EndDate   string   `json:"end_date"`   // "YYYY-MM-DD" (full mode only)
 }
 
-// ExportResponse defines the response payload.
+// ExportResponse はエクスポート関数のレスポンスペイロードです。
 type ExportResponse struct {
 	Results []model.ExportResult `json:"results"`
 	Success bool                 `json:"success"`
 	Message string               `json:"message"`
 }
 
-// parseExportRequest decodes and validates the export request body.
+// parseExportRequest はリクエストボディをデコード・バリデーションします。
 func parseExportRequest(r *http.Request) (*ExportRequest, error) {
 	var req ExportRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -44,7 +44,7 @@ func parseExportRequest(r *http.Request) (*ExportRequest, error) {
 	return &req, nil
 }
 
-// New creates an HTTP handler that delegates to a service.Service obtained from the factory.
+// New はファクトリから取得した service.Service に委譲する HTTP ハンドラを生成します。
 func New(newExporter func(ctx context.Context) (service.Service, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
@@ -69,9 +69,13 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 		results := exp.Export(ctx, req.Tables, req.Mode, req.StartDate, req.EndDate)
 
 		success := true
+		checkpointFailed := false
 		for _, result := range results {
 			if !result.Success {
 				success = false
+				if result.CheckpointFailed {
+					checkpointFailed = true
+				}
 				log.Printf("ERROR: export failed for table %s: %s", result.Table, result.Error)
 			} else {
 				log.Printf("SUCCESS: exported %d rows from %s in %v", result.RowsExported, result.Table, result.Duration)
@@ -83,18 +87,22 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 			Success: success,
 		}
 
-		if success {
-			response.Message = fmt.Sprintf("Successfully exported %d tables", len(results))
-		} else {
+		// checkpoint 書き込み失敗 → 500（BQ ロード済みのため operator に通知必須）
+		// その他の部分失敗 → 206
+		status := http.StatusOK
+		switch {
+		case checkpointFailed:
+			status = http.StatusInternalServerError
+			response.Message = "Checkpoint write failed after warehouse load; re-run requires MERGE dedup to stay idempotent"
+		case !success:
+			status = http.StatusPartialContent
 			response.Message = "Some exports failed, check results for details"
+		default:
+			response.Message = fmt.Sprintf("Successfully exported %d tables", len(results))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		if success {
-			w.WriteHeader(http.StatusOK)
-		} else {
-			w.WriteHeader(http.StatusPartialContent)
-		}
+		w.WriteHeader(status)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			log.Printf("ERROR: failed to write response: %v", err)
 		}

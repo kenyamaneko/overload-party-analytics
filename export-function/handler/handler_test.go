@@ -100,7 +100,7 @@ func TestParseExportRequest_InvalidMode(t *testing.T) {
 	}
 }
 
-// mockExporter implements service.Service for testing.
+// mockExporter はテスト用の service.Service 実装です。
 type mockExporter struct {
 	results []model.ExportResult
 }
@@ -223,6 +223,43 @@ func TestHandler_PartialFailure(t *testing.T) {
 	}
 	if resp.Results[1].Error == "" {
 		t.Error("expected error message for failed table")
+	}
+}
+
+func TestHandler_CheckpointFailureReturns500(t *testing.T) {
+	// BQ ロード成功後の checkpoint 書き込み失敗を汎用 206 partial-content に
+	// 含めてはならない。500 を返すことで Cloud Scheduler のリトライ / アラートが
+	// 発火し、operator が MERGE dedup の冪等性を活かして再実行できる。
+	results := []model.ExportResult{
+		{
+			Table:            "games",
+			RowsExported:     42,
+			Success:          false,
+			CheckpointFailed: true,
+			Error:            "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
+		},
+	}
+
+	h := New(newMockFactory(results))
+	body := `{"tables": ["games"], "mode": "incremental"}`
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	w := httptest.NewRecorder()
+
+	h(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d, want %d", w.Code, http.StatusInternalServerError)
+	}
+
+	var resp ExportResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if resp.Success {
+		t.Error("expected success=false for checkpoint failure")
+	}
+	if !strings.Contains(resp.Message, "Checkpoint") {
+		t.Errorf("message should mention Checkpoint, got: %s", resp.Message)
 	}
 }
 

@@ -19,12 +19,12 @@ type firestoreCheckpoint struct {
 	UpdatedAt      time.Time `firestore:"updated_at"`
 }
 
-// FirestoreCheckpointStore manages export checkpoints in Firestore.
+// FirestoreCheckpointStore は Firestore でエクスポートのチェックポイントを管理します。
 type FirestoreCheckpointStore struct {
 	client *firestore.Client
 }
 
-// NewFirestoreCheckpoint creates a new FirestoreCheckpointStore.
+// NewFirestoreCheckpoint は新しい FirestoreCheckpointStore を生成します。
 func NewFirestoreCheckpoint(ctx context.Context, projectID string) (*FirestoreCheckpointStore, error) {
 	client, err := firestore.NewClient(ctx, projectID)
 	if err != nil {
@@ -33,7 +33,7 @@ func NewFirestoreCheckpoint(ctx context.Context, projectID string) (*FirestoreCh
 	return &FirestoreCheckpointStore{client: client}, nil
 }
 
-// Get retrieves the checkpoint for a table.
+// Get はテーブルのチェックポイントを取得します。
 func (s *FirestoreCheckpointStore) Get(ctx context.Context, table string) (*model.Checkpoint, error) {
 	doc, err := s.client.Collection("export_checkpoints").Doc(table).Get(ctx)
 	if err != nil {
@@ -59,7 +59,7 @@ func (s *FirestoreCheckpointStore) Get(ctx context.Context, table string) (*mode
 	}, nil
 }
 
-// Update updates the checkpoint for a table.
+// Update はテーブルのチェックポイントを更新します。
 func (s *FirestoreCheckpointStore) Update(ctx context.Context, table string, cp *model.Checkpoint) error {
 	fc := &firestoreCheckpoint{
 		Table:          table,
@@ -76,7 +76,7 @@ func (s *FirestoreCheckpointStore) Update(ctx context.Context, table string, cp 
 	return nil
 }
 
-// Close closes the underlying Firestore client.
+// Close は Firestore クライアントをクローズします。
 func (s *FirestoreCheckpointStore) Close() error {
 	return s.client.Close()
 }
