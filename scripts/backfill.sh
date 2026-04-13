@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 ENV=${1:-dev}
 TABLE=${2:-all}
@@ -13,6 +13,23 @@ echo "Environment: ${ENV}"
 echo "Table: ${TABLE}"
 echo "Start Date: ${START_DATE}"
 echo ""
+
+command -v gcloud >/dev/null 2>&1 || { echo "ERROR: gcloud not found in PATH" >&2; exit 1; }
+command -v curl >/dev/null 2>&1 || { echo "ERROR: curl not found in PATH" >&2; exit 1; }
+command -v jq >/dev/null 2>&1 || { echo "ERROR: jq not found in PATH (required to parse function response)" >&2; exit 1; }
+
+# Resolve the Gen2 Cloud Function HTTPS URL once; calling via curl lets us
+# inspect both the HTTP status code and the JSON body (which is what the
+# export handler uses to signal checkpoint-level failures).
+FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
+  --region "$REGION" \
+  --gen2 \
+  --format="value(serviceConfig.uri)" 2>/dev/null || true)
+
+if [ -z "$FUNCTION_URL" ]; then
+  echo "ERROR: failed to resolve URL for function ${FUNCTION_NAME} in ${REGION}" >&2
+  exit 1
+fi
 
 # Define all tables
 ALL_TABLES=("games" "game_events" "players" "matches" "card_definitions" "deck_cards" "subscriptions" "purchases")
@@ -28,6 +45,70 @@ fi
 CURRENT_DATE=$(date +%Y-%m-%d)
 CHUNK_START="$START_DATE"
 
+FAIL_COUNT=0
+
+call_function() {
+  local tbl="$1"
+  local chunk_start="$2"
+  local chunk_end="$3"
+
+  local payload
+  payload=$(printf '{"tables":["%s"],"mode":"full","start_date":"%s","end_date":"%s"}' \
+    "$tbl" "$chunk_start" "$chunk_end")
+
+  local id_token
+  id_token=$(gcloud auth print-identity-token 2>/dev/null || true)
+  if [ -z "$id_token" ]; then
+    echo "ERROR: failed to mint identity token via gcloud auth print-identity-token" >&2
+    return 2
+  fi
+
+  local tmpfile
+  tmpfile=$(mktemp)
+  local http_code
+  http_code=$(curl -sS -o "$tmpfile" -w '%{http_code}' \
+    -X POST "$FUNCTION_URL" \
+    -H "Authorization: Bearer ${id_token}" \
+    -H "Content-Type: application/json" \
+    --data "$payload" || echo "000")
+
+  local body
+  body=$(cat "$tmpfile")
+  rm -f "$tmpfile"
+
+  if [ "$http_code" != "200" ] && [ "$http_code" != "206" ]; then
+    echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] http=${http_code}" >&2
+    echo "    response: ${body}" >&2
+    return 1
+  fi
+
+  # 206 = partial content; the handler returns this when at least one table
+  # failed but none triggered a checkpoint-level escalation. Treat any
+  # non-200 body as a failure for a backfill run.
+  if [ "$http_code" = "206" ]; then
+    echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] http=206 (partial success)" >&2
+    echo "    response: ${body}" >&2
+    return 1
+  fi
+
+  # HTTP 200: still inspect the JSON body for per-table failures and any
+  # top-level errors array a future handler might emit.
+  local errs
+  errs=$(printf '%s' "$body" | jq -r '[.results[]? | select(.success == false) | .error] + (.errors // []) | .[]' 2>/dev/null || true)
+  if [ -n "$errs" ]; then
+    echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] errors in response body:" >&2
+    while IFS= read -r line; do
+      [ -n "$line" ] && echo "    - ${line}" >&2
+    done <<< "$errs"
+    return 1
+  fi
+
+  local rows
+  rows=$(printf '%s' "$body" | jq -r '[.results[]?.rows_exported] | add // 0' 2>/dev/null || echo "?")
+  echo "  OK   ${tbl} [${chunk_start} → ${chunk_end}] rows=${rows}"
+  return 0
+}
+
 while [[ "$CHUNK_START" < "$CURRENT_DATE" ]]; do
   # Calculate chunk end (1 month later)
   CHUNK_END=$(date -d "$CHUNK_START + 1 month" +%Y-%m-%d 2>/dev/null || date -v+1m -j -f "%Y-%m-%d" "$CHUNK_START" +%Y-%m-%d)
@@ -40,12 +121,12 @@ while [[ "$CHUNK_START" < "$CURRENT_DATE" ]]; do
   for TBL in "${TABLES[@]}"; do
     echo "Backfilling ${TBL} from ${CHUNK_START} to ${CHUNK_END}..."
 
-    gcloud functions call "$FUNCTION_NAME" \
-      --region "$REGION" \
-      --data "{\"tables\": [\"$TBL\"], \"mode\": \"full\", \"start_date\": \"$CHUNK_START\", \"end_date\": \"$CHUNK_END\"}" \
-      --quiet
+    if ! call_function "$TBL" "$CHUNK_START" "$CHUNK_END"; then
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      echo "ERROR: backfill failed for table=${TBL} range=${CHUNK_START}..${CHUNK_END}" >&2
+      exit 2
+    fi
 
-    echo "  Done ${TBL}"
     sleep 5  # Rate limiting
   done
 
@@ -53,4 +134,9 @@ while [[ "$CHUNK_START" < "$CURRENT_DATE" ]]; do
 done
 
 echo ""
-echo "Backfill complete!"
+if [ "$FAIL_COUNT" -eq 0 ]; then
+  echo "Backfill complete!"
+else
+  echo "Backfill finished with ${FAIL_COUNT} failures" >&2
+  exit 2
+fi
