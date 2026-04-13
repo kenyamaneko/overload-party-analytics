@@ -6,17 +6,7 @@ Cloud SQL PostgreSQL → BigQuery データエクスポート基盤
 
 ゲームサーバーの Cloud SQL PostgreSQL データベースから BigQuery にデータをエクスポートし、ゲームバランス分析・ダッシュボード構築を行うための基盤。
 
-**目的:**
-- カード使用率・勝率の分析によるゲームバランス調整
-- ファクション別・カード別の統計分析
-- 勝利条件の分布分析
-- 課金・収益メトリクスの追跡
-
-**特徴:**
-- 完全独立: メインゲームサーバーのコードに一切依存しない
-- 低コスト: Cloud SQL の読み取りは最小限（増分エクスポート）
-- 増分更新: Firestore チェックポイントで差分のみエクスポート
-- 自動実行: Cloud Scheduler で定期実行
+カード使用率・勝率・課金メトリクスの分析基盤。Cloud SQL から増分エクスポート（Firestore チェックポイント）し、Cloud Scheduler で自動実行。
 
 ## アーキテクチャ
 
@@ -139,7 +129,7 @@ curl -X POST http://localhost:8080 \
 | subscriptions | MRR、チャーン率 | Daily |
 | purchases | ARPU、購入頻度 (source: one_time_purchases) | Daily |
 
-更新があるテーブル (games, players, subscriptions, card_definitions) は append-only で蓄積されます。最新状態は `*_latest` VIEW (`games_latest`, `players_latest`, `subscriptions_latest`, `card_definitions_latest`) で取得してください。
+append-only テーブルの最新状態は `*_latest` VIEW で取得する。
 
 ## BigQuery 分析例
 
@@ -227,6 +217,3 @@ bq ls -j -a -n 100 overload-party-dev
 gsutil ls gs://op-bq-staging-dev/exports/
 ```
 
-## ライセンス
-
-Proprietary

@@ -2,8 +2,8 @@
 
 Overload Party Analytics - BigQuery テーブル定義
 
-> **Note:** PostgreSQL 側のソーススキーマの SSoT は overload-party-common リポジトリにあります。
-> 本ドキュメントは BigQuery 側のテーブル定義（型変換・パーティショニング・クラスタリング等）を記載しています。
+> PostgreSQL 側のソーススキーマは各サービスリポジトリの `db/schema.sql` が SSoT。
+> 本ドキュメントは BigQuery 側のテーブル定義を記載。
 
 ## Dataset
 

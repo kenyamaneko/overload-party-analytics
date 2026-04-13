@@ -21,6 +21,7 @@ function.zip
 
 # Claude Code
 CLAUDE.md
+.claude/
 
 # IDE
 .vscode/
