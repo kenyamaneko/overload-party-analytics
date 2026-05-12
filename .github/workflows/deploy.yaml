@@ -1,0 +1,83 @@
+# 手動 dispatch で export-function を dev 環境へデプロイ。
+# build (vet + test + build) が通過してから deploy する。
+name: Deploy
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  REGION: asia-northeast1
+  FUNCTION_NAME: export-postgres-to-bigquery-dev
+  PROJECT: overload-party-dev
+
+jobs:
+  build:
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: export-function
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: export-function/go.mod
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...
+
+  deploy:
+    needs: build
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Detect Go runtime
+        id: gomod
+        run: |
+          GO_VERSION=$(grep '^go ' export-function/go.mod | awk '{print $2}')
+          RUNTIME="go$(echo ${GO_VERSION} | tr -d '.')"
+          echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Cloud Function
+        run: |
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --region ${{ env.REGION }} \
+            --project ${{ env.PROJECT }} \
+            --runtime ${{ steps.gomod.outputs.runtime }} \
+            --entry-point ExportPostgresToBigQuery \
+            --trigger-http \
+            --source export-function/ \
+            --quiet
