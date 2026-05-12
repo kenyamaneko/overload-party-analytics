@@ -1,16 +1,7 @@
-# export-function のビルド確認 + dev 環境への自動デプロイ。
-# Cloud Functions Gen2 はソースから直接デプロイする（Docker イメージ不要）。
+# export-function のビルド確認。
 name: CI
 
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - '**/*.md'
-      - 'docs/**'
-      - '.vscode/**'
-      - '.gitignore'
-      - 'LICENSE'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -26,12 +17,6 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
-
-env:
-  REGION: asia-northeast1
-  FUNCTION_NAME: export-postgres-to-bigquery-dev
-  PROJECT: overload-party-dev
 
 jobs:
   build:
@@ -58,42 +43,3 @@ jobs:
 
       - name: Build
         run: go build ./...
-
-  deploy:
-    if: github.ref == 'refs/heads/main'
-    needs: build
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
-          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
-
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Detect Go runtime
-        id: gomod
-        run: |
-          GO_VERSION=$(grep '^go ' export-function/go.mod | awk '{print $2}')
-          RUNTIME="go$(echo ${GO_VERSION} | tr -d '.')"
-          echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy Cloud Function
-        run: |
-          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-            --gen2 \
-            --region ${{ env.REGION }} \
-            --project ${{ env.PROJECT }} \
-            --runtime ${{ steps.gomod.outputs.runtime }} \
-            --entry-point ExportPostgresToBigQuery \
-            --trigger-http \
-            --source export-function/ \
-            --quiet
