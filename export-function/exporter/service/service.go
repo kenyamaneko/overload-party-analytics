@@ -51,16 +51,16 @@ func (e *exporter) Export(ctx context.Context, tables []string, mode string, sta
 
 		rowCount, filePath, err := e.exportTable(ctx, table, mode, startDate, endDate)
 		if err != nil {
-			result.Success = false
+			result.IsSuccess = false
 			result.Error = err.Error()
 			result.RowsExported = rowCount
 			result.FilePath = filePath
 			if errors.Is(err, ErrCheckpointUpdate) {
-				result.CheckpointFailed = true
+				result.IsCheckpointFailed = true
 			}
 			log.Printf("ERROR: failed to export table %s: %v", table, err)
 		} else {
-			result.Success = true
+			result.IsSuccess = true
 			result.RowsExported = rowCount
 			result.FilePath = filePath
 		}
@@ -75,8 +75,8 @@ func (e *exporter) Export(ctx context.Context, tables []string, mode string, sta
 
 // exportTable は単一テーブルをエクスポートし、行数とステージングパスを返します。
 func (e *exporter) exportTable(ctx context.Context, table string, mode string, startDate, endDate string) (int64, string, error) {
-	tableConfig, exists := e.config.Tables[table]
-	if !exists {
+	tableConfig, ok := e.config.Tables[table]
+	if !ok {
 		return 0, "", fmt.Errorf("table %s not found in config", table)
 	}
 

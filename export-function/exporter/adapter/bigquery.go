@@ -44,8 +44,8 @@ func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsP
 		return fmt.Errorf("bigquery_table %q is not a valid identifier", tableConfig.BigQueryTable)
 	}
 
-	useMerge := dedupMode == model.DedupModeMerge && len(tableConfig.NaturalKey) > 0
-	if !useMerge {
+	shouldMerge := dedupMode == model.DedupModeMerge && len(tableConfig.NaturalKey) > 0
+	if !shouldMerge {
 		return l.appendLoad(ctx, tableConfig.BigQueryTable, gcsPath)
 	}
 

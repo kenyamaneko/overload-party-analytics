@@ -27,7 +27,7 @@ func NewGCSWriter(ctx context.Context, bucket string) (*GCSWriter, error) {
 
 // Write は行を JSONL 形式で GCS に書き込み、gs:// パスを返します。
 func (w *GCSWriter) Write(ctx context.Context, table string, rows []map[string]interface{}, timestamp time.Time) (string, error) {
-	objectPath := gcsObjectPath(table, timestamp)
+	objectPath := buildGCSObjectPath(table, timestamp)
 
 	obj := w.client.Bucket(w.bucket).Object(objectPath)
 
@@ -81,8 +81,8 @@ func (w *GCSWriter) parseObjectPath(uri string) (string, error) {
 	return strings.TrimPrefix(uri, prefix), nil
 }
 
-// gcsObjectPath は GCS オブジェクトパス (exports/YYYYMMDD/table/HHmmss.SSS.jsonl) を構築します。
-func gcsObjectPath(table string, timestamp time.Time) string {
+// buildGCSObjectPath は GCS オブジェクトパス (exports/YYYYMMDD/table/HHmmss.SSS.jsonl) を構築します。
+func buildGCSObjectPath(table string, timestamp time.Time) string {
 	datePath := timestamp.Format("20060102")
 	timePath := timestamp.Format("150405.000")
 	return fmt.Sprintf("exports/%s/%s/%s.jsonl", datePath, table, timePath)

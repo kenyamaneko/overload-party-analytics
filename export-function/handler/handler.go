@@ -21,9 +21,9 @@ type ExportRequest struct {
 
 // ExportResponse はエクスポート関数のレスポンスペイロードです。
 type ExportResponse struct {
-	Results []model.ExportResult `json:"results"`
-	Success bool                 `json:"success"`
-	Message string               `json:"message"`
+	Results   []model.ExportResult `json:"results"`
+	IsSuccess bool                 `json:"success"`
+	Message   string               `json:"message"`
 }
 
 // parseExportRequest はリクエストボディをデコード・バリデーションします。
@@ -68,13 +68,13 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 
 		results := exp.Export(ctx, req.Tables, req.Mode, req.StartDate, req.EndDate)
 
-		success := true
-		checkpointFailed := false
+		isSuccess := true
+		hasCheckpointFailed := false
 		for _, result := range results {
-			if !result.Success {
-				success = false
-				if result.CheckpointFailed {
-					checkpointFailed = true
+			if !result.IsSuccess {
+				isSuccess = false
+				if result.IsCheckpointFailed {
+					hasCheckpointFailed = true
 				}
 				log.Printf("ERROR: export failed for table %s: %s", result.Table, result.Error)
 			} else {
@@ -83,18 +83,18 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 		}
 
 		response := ExportResponse{
-			Results: results,
-			Success: success,
+			Results:   results,
+			IsSuccess: isSuccess,
 		}
 
 		// checkpoint 書き込み失敗 → 500（BQ ロード済みのため operator に通知必須）
 		// その他の部分失敗 → 206
 		status := http.StatusOK
 		switch {
-		case checkpointFailed:
+		case hasCheckpointFailed:
 			status = http.StatusInternalServerError
 			response.Message = "Checkpoint write failed after warehouse load; re-run requires MERGE dedup to stay idempotent"
-		case !success:
+		case !isSuccess:
 			status = http.StatusPartialContent
 			response.Message = "Some exports failed, check results for details"
 		default:
