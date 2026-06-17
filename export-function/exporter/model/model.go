@@ -10,11 +10,11 @@ type ExportResult struct {
 	StartTime    time.Time     `json:"start_time"`
 	EndTime      time.Time     `json:"end_time"`
 	Duration     time.Duration `json:"duration"`
-	Success      bool          `json:"success"`
+	IsSuccess    bool          `json:"success"`
 	Error        string        `json:"error,omitempty"`
-	// CheckpointFailed は BQ ロード成功後に checkpoint 書き込みが失敗した場合に true。
+	// IsCheckpointFailed は BQ ロード成功後に checkpoint 書き込みが失敗した場合に true。
 	// handler が 206 ではなく 500 を返すために使用する。
-	CheckpointFailed bool `json:"checkpoint_failed,omitempty"`
+	IsCheckpointFailed bool `json:"checkpoint_failed,omitempty"`
 }
 
 // Checkpoint はテーブルごとのエクスポート状態を表します。

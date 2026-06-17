@@ -87,11 +87,11 @@ func TestExport_CheckpointFailureEscalates(t *testing.T) {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
 	r := results[0]
-	if r.Success {
-		t.Error("expected Success=false on checkpoint failure")
+	if r.IsSuccess {
+		t.Error("expected IsSuccess=false on checkpoint failure")
 	}
-	if !r.CheckpointFailed {
-		t.Error("expected CheckpointFailed=true")
+	if !r.IsCheckpointFailed {
+		t.Error("expected IsCheckpointFailed=true")
 	}
 	if r.Error == "" || !errorContains(r.Error, "checkpoint update failed") {
 		t.Errorf("expected error to wrap ErrCheckpointUpdate, got: %q", r.Error)
@@ -108,7 +108,7 @@ func TestExport_FullModeSkipsCheckpointUpdate(t *testing.T) {
 	svc := New(cfg, src, stg, wh, cp)
 	results := svc.Export(context.Background(), []string{"games"}, "full", "2024-01-01", "2024-02-01")
 
-	if len(results) != 1 || !results[0].Success {
+	if len(results) != 1 || !results[0].IsSuccess {
 		t.Fatalf("expected success in full mode, got %+v", results)
 	}
 	if cp.updated {

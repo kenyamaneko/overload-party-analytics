@@ -40,7 +40,7 @@ func TestGcsObjectPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := gcsObjectPath(tt.table, tt.timestamp)
+			got := buildGCSObjectPath(tt.table, tt.timestamp)
 			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}

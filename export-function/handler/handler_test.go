@@ -150,7 +150,7 @@ func TestHandler_AllSuccess(t *testing.T) {
 			StartTime:    time.Now(),
 			EndTime:      time.Now(),
 			Duration:     100 * time.Millisecond,
-			Success:      true,
+			IsSuccess:    true,
 		},
 		{
 			Table:        "players",
@@ -159,7 +159,7 @@ func TestHandler_AllSuccess(t *testing.T) {
 			StartTime:    time.Now(),
 			EndTime:      time.Now(),
 			Duration:     50 * time.Millisecond,
-			Success:      true,
+			IsSuccess:    true,
 		},
 	}
 
@@ -178,7 +178,7 @@ func TestHandler_AllSuccess(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if !resp.Success {
+	if !resp.IsSuccess {
 		t.Error("expected success=true")
 	}
 	if len(resp.Results) != 2 {
@@ -194,12 +194,12 @@ func TestHandler_PartialFailure(t *testing.T) {
 		{
 			Table:        "games",
 			RowsExported: 42,
-			Success:      true,
+			IsSuccess:    true,
 		},
 		{
-			Table:   "players",
-			Success: false,
-			Error:   "query postgres: connection refused",
+			Table:     "players",
+			IsSuccess: false,
+			Error:     "query postgres: connection refused",
 		},
 	}
 
@@ -218,7 +218,7 @@ func TestHandler_PartialFailure(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Success {
+	if resp.IsSuccess {
 		t.Error("expected success=false for partial failure")
 	}
 	if resp.Results[1].Error == "" {
@@ -232,11 +232,11 @@ func TestHandler_CheckpointFailureReturns500(t *testing.T) {
 	// 発火し、operator が MERGE dedup の冪等性を活かして再実行できる。
 	results := []model.ExportResult{
 		{
-			Table:            "games",
-			RowsExported:     42,
-			Success:          false,
-			CheckpointFailed: true,
-			Error:            "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
+			Table:              "games",
+			RowsExported:       42,
+			IsSuccess:          false,
+			IsCheckpointFailed: true,
+			Error:              "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
 		},
 	}
 
@@ -255,7 +255,7 @@ func TestHandler_CheckpointFailureReturns500(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if resp.Success {
+	if resp.IsSuccess {
 		t.Error("expected success=false for checkpoint failure")
 	}
 	if !strings.Contains(resp.Message, "Checkpoint") {
