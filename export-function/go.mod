@@ -8,6 +8,7 @@ require (
 	cloud.google.com/go/storage v1.37.0
 	github.com/GoogleCloudPlatform/functions-framework-go v1.8.0
 	github.com/jackc/pgx/v5 v5.7.2
+	github.com/stretchr/testify v1.8.4
 	google.golang.org/api v0.162.0
 	google.golang.org/grpc v1.61.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -21,6 +22,7 @@ require (
 	cloud.google.com/go/longrunning v0.5.5 // indirect
 	github.com/apache/arrow/go/v14 v14.0.2 // indirect
 	github.com/cloudevents/sdk-go/v2 v2.14.0 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -41,6 +43,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742 // indirect
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.47.0 // indirect
