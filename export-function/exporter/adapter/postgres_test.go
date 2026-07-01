@@ -90,9 +90,9 @@ func TestPgRowsToMaps_TimeConversion(t *testing.T) {
 		t.Fatalf("expected string, got %T", result[0]["created_at"])
 	}
 
-	want := ts.Format(time.RFC3339Nano)
-	if got != want {
-		t.Errorf("created_at: got %q, want %q", got, want)
+	const wantRFC3339Nano = "2025-06-15T10:30:00.123456789Z"
+	if got != wantRFC3339Nano {
+		t.Errorf("created_at: got %q, want %q", got, wantRFC3339Nano)
 	}
 }
 
