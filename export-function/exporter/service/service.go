@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"export-to-bq/exporter/model"
@@ -58,7 +58,7 @@ func (e *exporter) Export(ctx context.Context, tables []string, mode string, sta
 			if errors.Is(err, ErrCheckpointUpdate) {
 				result.IsCheckpointFailed = true
 			}
-			log.Printf("ERROR: failed to export table %s: %v", table, err)
+			slog.Error("failed to export table", "table", table, "error", err)
 		} else {
 			result.IsSuccess = true
 			result.RowsExported = rowCount
@@ -90,7 +90,7 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 		return 0, "", fmt.Errorf("resolve time range: %w", err)
 	}
 
-	log.Printf("INFO: Exporting %s from %v to %v", table, startTime, endTime)
+	slog.Info("exporting table", "table", table, "start_time", startTime, "end_time", endTime)
 
 	rows, err := e.source.Query(ctx, tableConfig, startTime, endTime)
 	if err != nil {
@@ -98,25 +98,25 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 	}
 
 	if len(rows) == 0 {
-		log.Printf("INFO: No new rows for table %s", table)
+		slog.Info("no new rows for table", "table", table)
 		return 0, "", nil
 	}
 
-	log.Printf("INFO: Read %d rows for table %s", len(rows), table)
+	slog.Info("read rows for table", "rows", len(rows), "table", table)
 
 	stagingURI, err := e.staging.Write(ctx, table, rows, endTime)
 	if err != nil {
 		return 0, "", fmt.Errorf("write to staging: %w", err)
 	}
 
-	log.Printf("INFO: Staged: %s", stagingURI)
+	slog.Info("staged to gcs", "staging_uri", stagingURI)
 
 	dedupMode := e.resolveDedupMode(mode)
 	if err := e.warehouse.Load(ctx, tableConfig, stagingURI, dedupMode); err != nil {
 		return 0, stagingURI, fmt.Errorf("load to warehouse: %w", err)
 	}
 
-	log.Printf("INFO: Loaded into warehouse table %s (dedup=%s)", tableConfig.BigQueryTable, dedupMode)
+	slog.Info("loaded into warehouse", "table", tableConfig.BigQueryTable, "dedup", dedupMode)
 
 	rowCount := int64(len(rows))
 
@@ -133,9 +133,10 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 	// ロード完了後にステージングオブジェクトを削除。
 	// 削除失敗はログのみ（GCS lifecycle policy で回収される）。
 	if err := e.staging.Delete(ctx, stagingURI); err != nil {
-		log.Printf("WARN: staging cleanup failed for %s: %v (non-fatal; bucket lifecycle will reap it)", stagingURI, err)
+		slog.Warn("staging cleanup failed (non-fatal; bucket lifecycle will reap it)",
+			"staging_uri", stagingURI, "error", err)
 	} else {
-		log.Printf("INFO: Staging object deleted: %s", stagingURI)
+		slog.Info("staging object deleted", "staging_uri", stagingURI)
 	}
 
 	return rowCount, stagingURI, nil
@@ -179,12 +180,12 @@ func resolveTimeRange(mode string, startDate, endDate string, checkpointTime, no
 func (e *exporter) Close() {
 	e.source.Close()
 	if err := e.staging.Close(); err != nil {
-		log.Printf("WARN: failed to close staging writer: %v", err)
+		slog.Warn("failed to close staging writer", "error", err)
 	}
 	if err := e.warehouse.Close(); err != nil {
-		log.Printf("WARN: failed to close warehouse loader: %v", err)
+		slog.Warn("failed to close warehouse loader", "error", err)
 	}
 	if err := e.checkpoint.Close(); err != nil {
-		log.Printf("WARN: failed to close checkpoint store: %v", err)
+		slog.Warn("failed to close checkpoint store", "error", err)
 	}
 }
