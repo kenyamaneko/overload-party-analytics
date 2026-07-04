@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -112,7 +113,7 @@ func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig,
 		if delErr := staging.Delete(ctx); delErr != nil {
 			// MERGE は既にコミット（または報告）済みなのでログのみ。
 			// 残存テーブルは次回実行時に上書きされる。
-			fmt.Printf("WARN: failed to drop staging table %s: %v\n", stagingName, delErr)
+			slog.Warn("failed to drop staging table", "staging_table", stagingName, "error", delErr)
 		}
 	}()
 

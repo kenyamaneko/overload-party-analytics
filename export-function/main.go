@@ -3,7 +3,7 @@ package exportfunction
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 
 	"github.com/GoogleCloudPlatform/functions-framework-go/functions"
@@ -15,7 +15,35 @@ import (
 )
 
 func init() {
+	slog.SetDefault(slog.New(newCloudLoggingHandler()).With("service", "analytics"))
 	functions.HTTP("ExportPostgresToBigQuery", handler.New(newExporterService))
+}
+
+// newCloudLoggingHandler は Cloud Logging が severity として解釈できる形式でログを出力するハンドラを返す。
+func newCloudLoggingHandler() slog.Handler {
+	return slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.LevelKey {
+				a.Key = "severity"
+				if level, ok := a.Value.Any().(slog.Level); ok {
+					switch {
+					case level >= slog.LevelError:
+						a.Value = slog.StringValue("ERROR")
+					case level >= slog.LevelWarn:
+						a.Value = slog.StringValue("WARNING")
+					case level >= slog.LevelInfo:
+						a.Value = slog.StringValue("INFO")
+					default:
+						a.Value = slog.StringValue("DEBUG")
+					}
+				}
+			}
+			if a.Key == slog.MessageKey {
+				a.Key = "message"
+			}
+			return a
+		},
+	})
 }
 
 func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
@@ -69,7 +97,7 @@ func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
 	defer func() {
 		if retErr != nil {
 			if closeErr := staging.Close(); closeErr != nil {
-				log.Printf("WARN: failed to close staging writer during cleanup: %v", closeErr)
+				slog.Warn("failed to close staging writer during cleanup", "error", closeErr)
 			}
 		}
 	}()
@@ -81,7 +109,7 @@ func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
 	defer func() {
 		if retErr != nil {
 			if closeErr := warehouse.Close(); closeErr != nil {
-				log.Printf("WARN: failed to close warehouse loader during cleanup: %v", closeErr)
+				slog.Warn("failed to close warehouse loader during cleanup", "error", closeErr)
 			}
 		}
 	}()
