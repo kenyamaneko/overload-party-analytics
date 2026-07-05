@@ -13,24 +13,7 @@
 
 ### 次のステップ
 
-#### 1. Git リポジトリ初期化
-```bash
-cd overload-party-analytics
-git init
-git add .
-git commit -m "Initial commit: Analytics infrastructure"
-```
-
-オプション: GitHub にプッシュ
-```bash
-gh repo create overload-party-analytics --private
-git remote add origin https://github.com/YOUR_ORG/overload-party-analytics.git
-git push -u origin main
-```
-
----
-
-#### 2. Terraform State バケット作成
+#### 1. Terraform State バケット作成
 ```bash
 gsutil mb -p overload-party-dev -l asia-northeast1 gs://overload-party-analytics-terraform-state
 gsutil versioning set on gs://overload-party-analytics-terraform-state
@@ -38,7 +21,7 @@ gsutil versioning set on gs://overload-party-analytics-terraform-state
 
 ---
 
-#### 3. Terraform インフラデプロイ
+#### 2. Terraform インフラデプロイ
 ```bash
 cd terraform/environments/dev
 terraform init
@@ -56,29 +39,29 @@ terraform apply
 
 ---
 
-#### 4. Cloud Function デプロイ
+#### 3. Cloud Function デプロイ
 
 main ブランチへの push で CI が自動デプロイします。
 
 ---
 
-#### 5. 動作確認
+#### 4. 動作確認
 
-##### 5.1 手動トリガーでテスト
+##### 4.1 手動トリガーでテスト
 ```bash
 gcloud functions call export-postgres-to-bigquery-dev \
   --region asia-northeast1 \
   --data '{"tables": ["games"], "mode": "incremental"}'
 ```
 
-##### 5.2 ログ確認
+##### 4.2 ログ確認
 ```bash
 gcloud functions logs read export-postgres-to-bigquery-dev \
   --region asia-northeast1 \
   --limit 50
 ```
 
-##### 5.3 BigQuery データ確認
+##### 4.3 BigQuery データ確認
 ```bash
 bq query --use_legacy_sql=false \
   'SELECT COUNT(*) FROM `overload-party-dev.analytics.games`'
@@ -86,7 +69,7 @@ bq query --use_legacy_sql=false \
 
 ---
 
-#### 6. 履歴データのバックフィル (オプション)
+#### 5. 履歴データのバックフィル (オプション)
 ```bash
 # 特定テーブルのみ
 ./scripts/backfill.sh dev games 2024-01-01
@@ -97,7 +80,7 @@ bq query --use_legacy_sql=false \
 
 ---
 
-#### 7. Looker Studio ダッシュボード作成
+#### 6. Looker Studio ダッシュボード作成
 
 1. https://lookerstudio.google.com/ にアクセス
 2. 「作成」→「レポート」
@@ -117,9 +100,9 @@ bq query --use_legacy_sql=false \
 
 ---
 
-#### 8. モニタリング設定
+#### 7. モニタリング設定
 
-##### 8.1 Cloud Monitoring アラート作成
+##### 7.1 Cloud Monitoring アラート作成
 ```bash
 # Function エラーアラート
 gcloud alpha monitoring policies create \
@@ -130,7 +113,7 @@ gcloud alpha monitoring policies create \
   --condition-threshold-duration=300s
 ```
 
-##### 8.2 定期的な確認項目
+##### 7.2 定期的な確認項目
 - [ ] Cloud Scheduler ジョブが正常に実行されているか
 - [ ] BigQuery テーブルのデータが更新されているか
 - [ ] GCS staging バケットのファイルが自動削除されているか (7日後)

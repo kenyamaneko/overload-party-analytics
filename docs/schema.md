@@ -15,7 +15,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ## Tables
 
-### 1. games (append-only)
+### games (append-only)
 
 ゲームのメタデータと結果。ステータス遷移のたびに新しい行が追加されます。最新状態は `games_latest` VIEW を使用。
 
@@ -42,7 +42,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 2. game_events
+### game_events
 
 ゲーム内のすべてのアクション・イベントログ。
 
@@ -74,7 +74,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 3. players (append-only)
+### players (append-only)
 
 プレイヤーのプロフィールデータ。増分エクスポートにより `updated_at` が変わるたびに新しい行が追加されます。最新状態の取得には `players_latest` VIEW を使用してください。
 
@@ -105,7 +105,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 4. matches
+### matches
 
 マッチメイキングの記録。
 
@@ -124,7 +124,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 5. card_definitions (append-only)
+### card_definitions (append-only)
 
 カードマスタデータ。マスタ更新時に新しい行が追加されます。最新状態は `card_definitions_latest` VIEW を使用。
 
@@ -155,7 +155,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 6. deck_cards
+### deck_cards
 
 プレイヤーのデッキ構成データ。
 
@@ -180,7 +180,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 7. subscriptions (append-only)
+### subscriptions (append-only)
 
 サブスクリプション (継続課金) データ。ステータス変更時に新しい行が追加されます。最新状態は `subscriptions_latest` VIEW を使用。
 
@@ -208,7 +208,7 @@ Overload Party Analytics - BigQuery テーブル定義
 
 ---
 
-### 8. purchases
+### purchases
 
 ワンタイム課金データ。
 

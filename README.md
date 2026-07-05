@@ -30,21 +30,18 @@ overload-party-analytics/
 │   ├── go.mod
 │   ├── main.go
 │   ├── config.yaml        # テーブル定義・クエリ
+│   ├── handler/           # HTTP リクエスト処理
 │   └── exporter/          # エクスポートロジック
-│       ├── config.go      # 設定ロード
-│       ├── exporter.go    # メインエクスポート処理
-│       ├── postgres.go    # PostgreSQL クエリ実行
-│       ├── bigquery.go    # BigQuery ロード
-│       ├── gcs.go         # GCS ステージング
-│       └── checkpoint.go  # Firestore チェックポイント
+│       ├── model/         # 設定・エクスポート結果モデル
+│       ├── service/       # エクスポート処理本体
+│       └── adapter/       # PostgreSQL / GCS / BigQuery / Firestore 接続
 ├── terraform/              # インフラ定義
 │   ├── modules/
 │   │   ├── bigquery/
 │   │   ├── export-function/
 │   │   └── scheduler/
 │   └── environments/
-│       ├── dev/
-│       └── prod/
+│       └── dev/
 ├── scripts/
 │   └── backfill.sh        # 履歴データバックフィル
 └── docs/
@@ -73,7 +70,7 @@ overload-party-analytics/
 | `DB_NAME` | データベース名 | `overload_party` |
 | `BQ_PROJECT_ID` | BigQuery プロジェクト ID | `overload-party-dev` |
 | `BQ_DATASET_ID` | BigQuery データセット ID | `analytics` |
-| `GCS_BUCKET` | ステージング用 GCS バケット | `op-bq-staging-dev` |
+| `GCS_BUCKET` | ステージング用 GCS バケット | `overload-party-dev-bq-staging` |
 
 ### 初回デプロイ
 
@@ -105,7 +102,7 @@ export DB_PASSWORD="..."
 export DB_NAME="overload_party"
 export BQ_PROJECT_ID="overload-party-dev"
 export BQ_DATASET_ID="analytics"
-export GCS_BUCKET="op-bq-staging-dev"
+export GCS_BUCKET="overload-party-dev-bq-staging"
 
 # ローカル実行
 go run main.go
@@ -214,6 +211,6 @@ gcloud firestore export gs://backup-bucket \
 bq ls -j -a -n 100 overload-party-dev
 
 # GCS ファイル確認
-gsutil ls gs://op-bq-staging-dev/exports/
+gsutil ls gs://overload-party-dev-bq-staging/exports/
 ```
 
