@@ -3,22 +3,23 @@ package model
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func writeConfigFile(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, os.WriteFile(path, []byte(content), 0644))
 	return path
 }
 
-func TestLoadConfig_Valid(t *testing.T) {
-	path := writeConfigFile(t, `
+func TestLoadConfig(t *testing.T) {
+	t.Run("設定ファイルの読み込み", func(t *testing.T) {
+		t.Run("必須項目が揃った設定のとき、各テーブルの定義が読み込まれる", func(t *testing.T) {
+			path := writeConfigFile(t, `
 tables:
   games:
     source_table: games
@@ -30,107 +31,79 @@ tables:
     query: "SELECT * FROM players WHERE updated_at >= $1 AND updated_at < $2"
 `)
 
-	config, err := LoadConfig(path)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+			config, err := LoadConfig(path)
+			require.NoError(t, err)
+			require.Len(t, config.Tables, 2)
 
-	if len(config.Tables) != 2 {
-		t.Fatalf("expected 2 tables, got %d", len(config.Tables))
-	}
+			games := config.Tables["games"]
+			require.Equal(t, "games", games.SourceTable)
+			require.Equal(t, "games", games.BigQueryTable)
+			require.NotEmpty(t, games.Query)
+		})
 
-	games := config.Tables["games"]
-	if games.SourceTable != "games" {
-		t.Errorf("source_table: got %q, want %q", games.SourceTable, "games")
-	}
-	if games.BigQueryTable != "games" {
-		t.Errorf("bigquery_table: got %q, want %q", games.BigQueryTable, "games")
-	}
-	if games.Query == "" {
-		t.Error("query should not be empty")
-	}
-}
-
-func TestLoadConfig_MissingSourceTable(t *testing.T) {
-	path := writeConfigFile(t, `
+		invalidCases := []struct {
+			name string
+			yaml string
+		}{
+			{
+				name: "source_table が無いとき、エラーになる",
+				yaml: `
 tables:
   games:
     bigquery_table: games
     query: "SELECT 1"
-`)
-
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error for missing source_table")
-	}
-}
-
-func TestLoadConfig_MissingBigQueryTable(t *testing.T) {
-	path := writeConfigFile(t, `
+`,
+			},
+			{
+				name: "bigquery_table が無いとき、エラーになる",
+				yaml: `
 tables:
   games:
     source_table: games
     query: "SELECT 1"
-`)
-
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error for missing bigquery_table")
-	}
-}
-
-func TestLoadConfig_MissingQuery(t *testing.T) {
-	path := writeConfigFile(t, `
+`,
+			},
+			{
+				name: "query が無いとき、エラーになる",
+				yaml: `
 tables:
   games:
     source_table: games
     bigquery_table: games
-`)
+`,
+			},
+			{
+				name: "tables が空のとき、エラーになる",
+				yaml: `tables:`,
+			},
+			{
+				name: "YAML として解析できないとき、エラーになる",
+				yaml: `{{{invalid yaml`,
+			},
+		}
+		for _, tt := range invalidCases {
+			t.Run(tt.name, func(t *testing.T) {
+				_, err := LoadConfig(writeConfigFile(t, tt.yaml))
+				require.Error(t, err)
+			})
+		}
 
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error for missing query")
-	}
-}
+		t.Run("設定ファイルが存在しないとき、エラーになる", func(t *testing.T) {
+			_, err := LoadConfig("/nonexistent/path/config.yaml")
+			require.Error(t, err)
+		})
 
-func TestLoadConfig_NoTables(t *testing.T) {
-	path := writeConfigFile(t, `tables:`)
-
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error for empty tables")
-	}
-}
-
-func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, err := LoadConfig("/nonexistent/path/config.yaml")
-	if err == nil {
-		t.Fatal("expected error for missing file")
-	}
-}
-
-func TestLoadConfig_InvalidYAML(t *testing.T) {
-	path := writeConfigFile(t, `{{{invalid yaml`)
-
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error for invalid YAML")
-	}
-}
-
-func TestLoadConfig_SourceTableMismatchReportedWithTableName(t *testing.T) {
-	path := writeConfigFile(t, `
+		t.Run("source_table が無いとき、エラーメッセージに該当テーブル名が含まれる", func(t *testing.T) {
+			path := writeConfigFile(t, `
 tables:
   my_custom_table:
     bigquery_table: bq_table
     query: "SELECT 1"
 `)
 
-	_, err := LoadConfig(path)
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if got := err.Error(); !strings.Contains(got, "my_custom_table") {
-		t.Errorf("error should mention table name 'my_custom_table', got: %s", got)
-	}
+			_, err := LoadConfig(path)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "my_custom_table")
+		})
+	})
 }

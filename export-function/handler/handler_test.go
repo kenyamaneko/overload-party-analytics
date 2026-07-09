@@ -10,94 +10,61 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"export-to-bq/exporter/model"
 	"export-to-bq/exporter/service"
 )
 
-func TestParseExportRequest_Valid(t *testing.T) {
-	body := `{"tables": ["games", "players"], "mode": "full", "start_date": "2024-01-01", "end_date": "2024-02-01"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+func TestParseExportRequest(t *testing.T) {
+	t.Run("エクスポートリクエストのパース", func(t *testing.T) {
+		t.Run("全項目を含む JSON のとき、各フィールドがパースされる", func(t *testing.T) {
+			body := `{"tables": ["games", "players"], "mode": "full", "start_date": "2024-01-01", "end_date": "2024-02-01"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
-	req, err := parseExportRequest(r)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(req.Tables) != 2 {
-		t.Errorf("tables: got %d, want 2", len(req.Tables))
-	}
-	if req.Mode != "full" {
-		t.Errorf("mode: got %q, want full", req.Mode)
-	}
-	if req.StartDate != "2024-01-01" {
-		t.Errorf("start_date: got %q, want 2024-01-01", req.StartDate)
-	}
-	if req.EndDate != "2024-02-01" {
-		t.Errorf("end_date: got %q, want 2024-02-01", req.EndDate)
-	}
-}
+			req, err := parseExportRequest(r)
+			require.NoError(t, err)
+			require.Len(t, req.Tables, 2)
+			require.Equal(t, "full", req.Mode)
+			require.Equal(t, "2024-01-01", req.StartDate)
+			require.Equal(t, "2024-02-01", req.EndDate)
+		})
 
-func TestParseExportRequest_DefaultMode(t *testing.T) {
-	body := `{"tables": ["games"]}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		t.Run("mode 未指定のとき、incremental が既定になる", func(t *testing.T) {
+			body := `{"tables": ["games"]}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
-	req, err := parseExportRequest(r)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if req.Mode != "incremental" {
-		t.Errorf("mode should default to 'incremental', got %q", req.Mode)
-	}
-}
+			req, err := parseExportRequest(r)
+			require.NoError(t, err)
+			require.Equal(t, "incremental", req.Mode)
+		})
 
-func TestParseExportRequest_EmptyTables(t *testing.T) {
-	body := `{"tables": []}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+		invalidCases := []struct {
+			name string
+			body string
+		}{
+			{name: "tables が空のとき、エラーになる", body: `{"tables": []}`},
+			{name: "tables が無いとき、エラーになる", body: `{"mode": "full"}`},
+			{name: "JSON として解析できないとき、エラーになる", body: `{invalid`},
+			{name: "body が空のとき、エラーになる", body: ``},
+		}
+		for _, tt := range invalidCases {
+			t.Run(tt.name, func(t *testing.T) {
+				r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
+				_, err := parseExportRequest(r)
+				require.Error(t, err)
+			})
+		}
 
-	_, err := parseExportRequest(r)
-	if err == nil {
-		t.Fatal("expected error for empty tables")
-	}
-}
+		t.Run("mode が未定義値のとき、エラーメッセージに該当値が含まれる", func(t *testing.T) {
+			body := `{"tables": ["games"], "mode": "xyz"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
-func TestParseExportRequest_MissingTables(t *testing.T) {
-	body := `{"mode": "full"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-
-	_, err := parseExportRequest(r)
-	if err == nil {
-		t.Fatal("expected error for missing tables")
-	}
-}
-
-func TestParseExportRequest_InvalidJSON(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{invalid`))
-
-	_, err := parseExportRequest(r)
-	if err == nil {
-		t.Fatal("expected error for invalid JSON")
-	}
-}
-
-func TestParseExportRequest_EmptyBody(t *testing.T) {
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(``))
-
-	_, err := parseExportRequest(r)
-	if err == nil {
-		t.Fatal("expected error for empty body")
-	}
-}
-
-func TestParseExportRequest_InvalidMode(t *testing.T) {
-	body := `{"tables": ["games"], "mode": "xyz"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-
-	_, err := parseExportRequest(r)
-	if err == nil {
-		t.Fatal("expected error for invalid mode")
-	}
-	if !strings.Contains(err.Error(), "xyz") {
-		t.Errorf("error should mention the invalid mode, got: %s", err.Error())
-	}
+			_, err := parseExportRequest(r)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "xyz")
+		})
+	})
 }
 
 // mockExporter はテスト用の service.Service 実装です。
@@ -117,165 +84,136 @@ func newMockFactory(results []model.ExportResult) func(context.Context) (service
 	}
 }
 
-func TestHandler_InvalidJSON(t *testing.T) {
-	h := New(newMockFactory(nil))
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`not json`))
-	w := httptest.NewRecorder()
+func TestHandler(t *testing.T) {
+	t.Run("エクスポートハンドラ", func(t *testing.T) {
+		badRequestCases := []struct {
+			name string
+			body string
+		}{
+			{name: "不正な JSON のとき、400 を返す", body: `not json`},
+			{name: "tables が空のとき、400 を返す", body: `{"tables": []}`},
+		}
+		for _, tt := range badRequestCases {
+			t.Run(tt.name, func(t *testing.T) {
+				h := New(newMockFactory(nil))
+				r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
+				w := httptest.NewRecorder()
 
-	h(w, r)
+				h(w, r)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusBadRequest)
-	}
-}
+				require.Equal(t, http.StatusBadRequest, w.Code)
+			})
+		}
 
-func TestHandler_EmptyTables(t *testing.T) {
-	h := New(newMockFactory(nil))
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"tables": []}`))
-	w := httptest.NewRecorder()
+		t.Run("全テーブル成功のとき、200 と結果一覧を返す", func(t *testing.T) {
+			results := []model.ExportResult{
+				{
+					Table:        "games",
+					RowsExported: 42,
+					FilePath:     "gs://bucket/exports/20250311/games/030000.000.jsonl",
+					StartTime:    time.Now(),
+					EndTime:      time.Now(),
+					Duration:     100 * time.Millisecond,
+					IsSuccess:    true,
+				},
+				{
+					Table:        "players",
+					RowsExported: 10,
+					FilePath:     "gs://bucket/exports/20250311/players/030000.000.jsonl",
+					StartTime:    time.Now(),
+					EndTime:      time.Now(),
+					Duration:     50 * time.Millisecond,
+					IsSuccess:    true,
+				},
+			}
 
-	h(w, r)
+			h := New(newMockFactory(results))
+			body := `{"tables": ["games", "players"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusBadRequest)
-	}
-}
+			h(w, r)
 
-func TestHandler_AllSuccess(t *testing.T) {
-	results := []model.ExportResult{
-		{
-			Table:        "games",
-			RowsExported: 42,
-			FilePath:     "gs://bucket/exports/20250311/games/030000.000.jsonl",
-			StartTime:    time.Now(),
-			EndTime:      time.Now(),
-			Duration:     100 * time.Millisecond,
-			IsSuccess:    true,
-		},
-		{
-			Table:        "players",
-			RowsExported: 10,
-			FilePath:     "gs://bucket/exports/20250311/players/030000.000.jsonl",
-			StartTime:    time.Now(),
-			EndTime:      time.Now(),
-			Duration:     50 * time.Millisecond,
-			IsSuccess:    true,
-		},
-	}
+			require.Equal(t, http.StatusOK, w.Code)
 
-	h := New(newMockFactory(results))
-	body := `{"tables": ["games", "players"], "mode": "incremental"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-	w := httptest.NewRecorder()
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.True(t, resp.IsSuccess)
+			require.Len(t, resp.Results, 2)
+			require.Equal(t, int64(42), resp.Results[0].RowsExported)
+		})
 
-	h(w, r)
+		t.Run("一部失敗のとき、206 を返しエラー内容を含む", func(t *testing.T) {
+			results := []model.ExportResult{
+				{
+					Table:        "games",
+					RowsExported: 42,
+					IsSuccess:    true,
+				},
+				{
+					Table:     "players",
+					IsSuccess: false,
+					Error:     "query postgres: connection refused",
+				},
+			}
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusOK)
-	}
+			h := New(newMockFactory(results))
+			body := `{"tables": ["games", "players"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
 
-	var resp ExportResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if !resp.IsSuccess {
-		t.Error("expected success=true")
-	}
-	if len(resp.Results) != 2 {
-		t.Errorf("results: got %d, want 2", len(resp.Results))
-	}
-	if resp.Results[0].RowsExported != 42 {
-		t.Errorf("rows_exported: got %d, want 42", resp.Results[0].RowsExported)
-	}
-}
+			h(w, r)
 
-func TestHandler_PartialFailure(t *testing.T) {
-	results := []model.ExportResult{
-		{
-			Table:        "games",
-			RowsExported: 42,
-			IsSuccess:    true,
-		},
-		{
-			Table:     "players",
-			IsSuccess: false,
-			Error:     "query postgres: connection refused",
-		},
-	}
+			require.Equal(t, http.StatusPartialContent, w.Code)
 
-	h := New(newMockFactory(results))
-	body := `{"tables": ["games", "players"], "mode": "incremental"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-	w := httptest.NewRecorder()
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.False(t, resp.IsSuccess)
+			require.NotEmpty(t, resp.Results[1].Error)
+		})
 
-	h(w, r)
+		t.Run("checkpoint 書き込み失敗のとき、500 を返す", func(t *testing.T) {
+			// BQ ロード成功後の checkpoint 書き込み失敗を汎用 206 partial-content に
+			// 含めてはならない。500 を返すことで Cloud Scheduler のリトライ / アラートが
+			// 発火し、operator が MERGE dedup の冪等性を活かして再実行できる。
+			results := []model.ExportResult{
+				{
+					Table:              "games",
+					RowsExported:       42,
+					IsSuccess:          false,
+					IsCheckpointFailed: true,
+					Error:              "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
+				},
+			}
 
-	if w.Code != http.StatusPartialContent {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusPartialContent)
-	}
+			h := New(newMockFactory(results))
+			body := `{"tables": ["games"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
 
-	var resp ExportResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp.IsSuccess {
-		t.Error("expected success=false for partial failure")
-	}
-	if resp.Results[1].Error == "" {
-		t.Error("expected error message for failed table")
-	}
-}
+			h(w, r)
 
-func TestHandler_CheckpointFailureReturns500(t *testing.T) {
-	// BQ ロード成功後の checkpoint 書き込み失敗を汎用 206 partial-content に
-	// 含めてはならない。500 を返すことで Cloud Scheduler のリトライ / アラートが
-	// 発火し、operator が MERGE dedup の冪等性を活かして再実行できる。
-	results := []model.ExportResult{
-		{
-			Table:              "games",
-			RowsExported:       42,
-			IsSuccess:          false,
-			IsCheckpointFailed: true,
-			Error:              "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
-		},
-	}
+			require.Equal(t, http.StatusInternalServerError, w.Code)
 
-	h := New(newMockFactory(results))
-	body := `{"tables": ["games"], "mode": "incremental"}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-	w := httptest.NewRecorder()
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.False(t, resp.IsSuccess)
+			require.Contains(t, resp.Message, "Checkpoint")
+		})
 
-	h(w, r)
+		t.Run("サービス初期化に失敗したとき、500 を返す", func(t *testing.T) {
+			factory := func(_ context.Context) (service.Service, error) {
+				return nil, fmt.Errorf("missing required environment variables")
+			}
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusInternalServerError)
-	}
+			h := New(factory)
+			body := `{"tables": ["games"]}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
 
-	var resp ExportResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp.IsSuccess {
-		t.Error("expected success=false for checkpoint failure")
-	}
-	if !strings.Contains(resp.Message, "Checkpoint") {
-		t.Errorf("message should mention Checkpoint, got: %s", resp.Message)
-	}
-}
+			h(w, r)
 
-func TestHandler_InitFailure(t *testing.T) {
-	factory := func(_ context.Context) (service.Service, error) {
-		return nil, fmt.Errorf("missing required environment variables")
-	}
-
-	h := New(factory)
-	body := `{"tables": ["games"]}`
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
-	w := httptest.NewRecorder()
-
-	h(w, r)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusInternalServerError)
-	}
+			require.Equal(t, http.StatusInternalServerError, w.Code)
+		})
+	})
 }
