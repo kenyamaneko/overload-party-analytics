@@ -1,9 +1,12 @@
 package adapter
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"export-to-bq/exporter/model"
 )
 
 func TestBuildMergeSQL(t *testing.T) {
@@ -66,5 +69,41 @@ func TestBuildMergeSQL(t *testing.T) {
 				}
 			})
 		}
+	})
+}
+
+func TestNewBQLoader(t *testing.T) {
+	t.Run("BQLoader の生成", func(t *testing.T) {
+		t.Run("データセット ID にハイフンを含むとき、生成はエラーになり該当値が示される", func(t *testing.T) {
+			_, err := NewBQLoader(context.Background(), "tst-project", "tst-dataset")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "tst-dataset")
+			require.Contains(t, err.Error(), "not a valid identifier")
+		})
+	})
+}
+
+func TestLoad(t *testing.T) {
+	t.Run("BigQuery へのロード", func(t *testing.T) {
+		t.Run("ロード先テーブル名にセミコロンを含むとき、ロードはエラーになる", func(t *testing.T) {
+			l := &BQLoader{}
+			tableConfig := model.TableConfig{BigQueryTable: "tst_games; DROP"}
+
+			err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeAppend)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "not a valid identifier")
+		})
+
+		t.Run("merge ロードで natural_key のカラム名に空白を含むとき、ロードはエラーになる", func(t *testing.T) {
+			l := &BQLoader{}
+			tableConfig := model.TableConfig{
+				BigQueryTable: "tst_games",
+				NaturalKey:    []string{"tst id"},
+			}
+
+			err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeMerge)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "tst id")
+		})
 	})
 }

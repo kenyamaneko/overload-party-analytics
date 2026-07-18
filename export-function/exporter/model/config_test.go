@@ -1,6 +1,7 @@
 package model
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -104,6 +105,89 @@ tables:
 			_, err := LoadConfig(path)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "my_custom_table")
+		})
+
+		t.Run("bigquery_table の識別子検証", func(t *testing.T) {
+			invalidIdentifierCases := []struct {
+				name          string
+				bigqueryTable string
+			}{
+				{
+					name:          "ハイフンを含むとき、エラーになる",
+					bigqueryTable: "tst-games",
+				},
+				{
+					name:          "セミコロンと空白を含むとき、エラーになる",
+					bigqueryTable: `tst_games; DROP TABLE x`,
+				},
+				{
+					name:          "数字で始まるとき、エラーになる",
+					bigqueryTable: "1tst_games",
+				},
+			}
+			for _, tt := range invalidIdentifierCases {
+				t.Run(tt.name, func(t *testing.T) {
+					path := writeConfigFile(t, fmt.Sprintf(`
+tables:
+  tst_games:
+    source_table: tst_games
+    bigquery_table: %q
+    query: "SELECT 1"
+`, tt.bigqueryTable))
+
+					_, err := LoadConfig(path)
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tt.bigqueryTable)
+					require.Contains(t, err.Error(), "not a valid identifier")
+				})
+			}
+
+			t.Run("アンダースコア始まりのとき、読み込める", func(t *testing.T) {
+				path := writeConfigFile(t, `
+tables:
+  tst_games:
+    source_table: tst_games
+    bigquery_table: _tst_games
+    query: "SELECT 1"
+`)
+
+				config, err := LoadConfig(path)
+				require.NoError(t, err)
+				require.Equal(t, "_tst_games", config.Tables["tst_games"].BigQueryTable)
+			})
+		})
+
+		t.Run("natural_key の識別子検証", func(t *testing.T) {
+			t.Run("カラム名にハイフンを含むとき、エラーになり該当テーブル名とカラム名が示される", func(t *testing.T) {
+				path := writeConfigFile(t, `
+tables:
+  tst_games:
+    source_table: tst_games
+    bigquery_table: tst_games
+    natural_key: [tst-id]
+    query: "SELECT 1"
+`)
+
+				_, err := LoadConfig(path)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "tst_games")
+				require.Contains(t, err.Error(), "tst-id")
+			})
+
+			t.Run("2カラム指定したとき、両カラムが読み込まれる", func(t *testing.T) {
+				path := writeConfigFile(t, `
+tables:
+  tst_games:
+    source_table: tst_games
+    bigquery_table: tst_games
+    natural_key: [tst_id, tst_updated_at]
+    query: "SELECT 1"
+`)
+
+				config, err := LoadConfig(path)
+				require.NoError(t, err)
+				require.Equal(t, []string{"tst_id", "tst_updated_at"}, config.Tables["tst_games"].NaturalKey)
+			})
 		})
 	})
 }
