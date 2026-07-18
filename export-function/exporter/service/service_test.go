@@ -285,7 +285,7 @@ func TestExport(t *testing.T) {
 				wantCheckpointUpdate:    false,
 			},
 			{
-				name:                    "fullモードで開始日が不正な日付のとき、失敗として結果に反映される",
+				name:                    "fullモードで開始日が不正な日付のとき、失敗となりエラー内容に開始日の値が含まれ、行の読み取りは行われない",
 				table:                   "tst_table_a",
 				mode:                    "full",
 				startDate:               "not-a-date",
