@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -47,5 +48,36 @@ func TestBuildGCSObjectPath(t *testing.T) {
 				require.Equal(t, tt.want, got)
 			})
 		}
+	})
+}
+
+func TestParseObjectPath(t *testing.T) {
+	t.Run("ステージング URI のバケット検証", func(t *testing.T) {
+		t.Run("自バケットの URI のとき、バケット部分を除いたオブジェクトパスが得られる", func(t *testing.T) {
+			w := &GCSWriter{bucket: "tst-bucket"}
+
+			got, err := w.parseObjectPath("gs://tst-bucket/exports/tst.jsonl")
+			require.NoError(t, err)
+			require.Equal(t, "exports/tst.jsonl", got)
+		})
+	})
+}
+
+func TestDelete(t *testing.T) {
+	t.Run("ステージングオブジェクトの削除", func(t *testing.T) {
+		t.Run("別バケットの URI を削除しようとしたとき、エラーになる", func(t *testing.T) {
+			w := &GCSWriter{bucket: "tst-bucket"}
+
+			err := w.Delete(context.Background(), "gs://tst-other/exports/tst.jsonl")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "does not belong to bucket")
+		})
+
+		t.Run("gs:// で始まらない URI を削除しようとしたとき、エラーになる", func(t *testing.T) {
+			w := &GCSWriter{bucket: "tst-bucket"}
+
+			err := w.Delete(context.Background(), "/exports/tst.jsonl")
+			require.Error(t, err)
+		})
 	})
 }

@@ -13,10 +13,11 @@ import (
 
 // mockRows は pgRowsToMaps テスト用の pgx.Rows 実装です。
 type mockRows struct {
-	fields []pgconn.FieldDescription
-	data   [][]any
-	index  int
-	err    error
+	fields    []pgconn.FieldDescription
+	data      [][]any
+	index     int
+	err       error
+	valuesErr error
 }
 
 func (m *mockRows) Close()                                       {}
@@ -29,6 +30,9 @@ func (m *mockRows) Next() bool {
 }
 func (m *mockRows) Scan(dest ...any) error { return nil }
 func (m *mockRows) Values() ([]any, error) {
+	if m.valuesErr != nil {
+		return nil, m.valuesErr
+	}
 	if m.index < 1 || m.index > len(m.data) {
 		return nil, fmt.Errorf("no current row")
 	}
@@ -154,6 +158,26 @@ func TestPgRowsToMaps(t *testing.T) {
 			snapshot, ok := parsed["deck_snapshot"].(map[string]interface{})
 			require.True(t, ok)
 			require.Equal(t, "tech", snapshot["faction"])
+		})
+
+		t.Run("行の値の読み出しに失敗したとき、エラーになり行は返らない", func(t *testing.T) {
+			rows := newMockRows([]string{"id"}, [][]any{{int64(1)}})
+			rows.valuesErr = fmt.Errorf("dummy values error")
+
+			result, err := pgRowsToMaps(rows)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "read row values")
+			require.Nil(t, result)
+		})
+
+		t.Run("行の反復中にエラーが発生したとき、エラーになり行は返らない", func(t *testing.T) {
+			rows := newMockRows([]string{"id"}, [][]any{{int64(1)}})
+			rows.err = fmt.Errorf("dummy iterate error")
+
+			result, err := pgRowsToMaps(rows)
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "iterate rows")
+			require.Nil(t, result)
 		})
 	})
 }

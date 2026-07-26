@@ -201,6 +201,54 @@ func TestHandler(t *testing.T) {
 			require.Contains(t, resp.Message, "Checkpoint")
 		})
 
+		t.Run("checkpoint 書き込み失敗のテーブルと通常の失敗のテーブルが混在するとき、206 ではなく 500 を返す", func(t *testing.T) {
+			results := []model.ExportResult{
+				{
+					Table:              "games",
+					IsSuccess:          false,
+					IsCheckpointFailed: true,
+					Error:              "checkpoint update failed after warehouse load: table=games: firestore: UNAVAILABLE",
+				},
+				{
+					Table:     "players",
+					IsSuccess: false,
+					Error:     "query postgres: connection refused",
+				},
+			}
+
+			h := New(newMockFactory(results))
+			body := `{"tables": ["games", "players"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
+
+			h(w, r)
+
+			require.Equal(t, http.StatusInternalServerError, w.Code)
+
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.False(t, resp.IsSuccess)
+			require.Contains(t, resp.Message, "Checkpoint")
+			require.Len(t, resp.Results, 2)
+		})
+
+		t.Run("エクスポート結果が0件のとき、200と成功レスポンスを返し件数0のメッセージになる", func(t *testing.T) {
+			h := New(newMockFactory([]model.ExportResult{}))
+			body := `{"tables": ["games"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
+
+			h(w, r)
+
+			require.Equal(t, http.StatusOK, w.Code)
+
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.True(t, resp.IsSuccess)
+			require.Len(t, resp.Results, 0)
+			require.Equal(t, "Successfully exported 0 tables", resp.Message)
+		})
+
 		t.Run("サービス初期化に失敗したとき、500 を返す", func(t *testing.T) {
 			factory := func(_ context.Context) (service.Service, error) {
 				return nil, fmt.Errorf("missing required environment variables")
