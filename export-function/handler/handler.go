@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"export-to-bq/exporter/model"
@@ -51,16 +51,16 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 
 		req, err := parseExportRequest(r)
 		if err != nil {
-			log.Printf("ERROR: %v", err)
+			slog.Warn("invalid export request", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("INFO: Starting export - tables=%v, mode=%s, start_date=%s, end_date=%s", req.Tables, req.Mode, req.StartDate, req.EndDate)
+		slog.Info("starting export", "tables", req.Tables, "mode", req.Mode, "start_date", req.StartDate, "end_date", req.EndDate)
 
 		exp, err := newExporter(ctx)
 		if err != nil {
-			log.Printf("ERROR: failed to initialize exporter: %v", err)
+			slog.Error("failed to initialize exporter", "error", err)
 			http.Error(w, "initialization failed", http.StatusInternalServerError)
 			return
 		}
@@ -76,9 +76,9 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 				if result.IsCheckpointFailed {
 					hasCheckpointFailed = true
 				}
-				log.Printf("ERROR: export failed for table %s: %s", result.Table, result.Error)
+				slog.Error("export failed", "table", result.Table, "error", result.Error)
 			} else {
-				log.Printf("SUCCESS: exported %d rows from %s in %v", result.RowsExported, result.Table, result.Duration)
+				slog.Info("export succeeded", "rows_exported", result.RowsExported, "table", result.Table, "duration", result.Duration)
 			}
 		}
 
@@ -104,7 +104,7 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
-			log.Printf("ERROR: failed to write response: %v", err)
+			slog.Error("failed to write response", "error", err)
 		}
 	}
 }
