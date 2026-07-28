@@ -51,7 +51,7 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 
 		req, err := parseExportRequest(r)
 		if err != nil {
-			slog.Error("invalid export request", "error", err)
+			slog.Warn("invalid export request", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
