@@ -368,6 +368,7 @@ func TestExport(t *testing.T) {
 				require.Len(t, src.queries, tt.wantSourceQueries)
 				for _, q := range src.queries {
 					require.Equal(t, tt.table, q.table)
+					// failureStageCases のどのケースも checkpoint をシードしないため、ゼロ値になる。
 					require.True(t, q.startTime.IsZero())
 				}
 
