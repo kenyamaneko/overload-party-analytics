@@ -40,19 +40,21 @@ func TestParseExportRequest(t *testing.T) {
 		})
 
 		invalidCases := []struct {
-			name string
-			body string
+			name            string
+			body            string
+			wantErrContains string
 		}{
-			{name: "tables が空のとき、エラーになる", body: `{"tables": []}`},
-			{name: "tables が無いとき、エラーになる", body: `{"mode": "full"}`},
-			{name: "JSON として解析できないとき、エラーになる", body: `{invalid`},
-			{name: "body が空のとき、エラーになる", body: ``},
+			{name: "tables が空のとき、エラーになる", body: `{"tables": []}`, wantErrContains: "no tables specified"},
+			{name: "tables が無いとき、エラーになる", body: `{"mode": "full"}`, wantErrContains: "no tables specified"},
+			{name: "JSON として解析できないとき、エラーになる", body: `{invalid`, wantErrContains: "invalid request"},
+			{name: "body が空のとき、エラーになる", body: ``, wantErrContains: "invalid request"},
 		}
 		for _, tt := range invalidCases {
 			t.Run(tt.name, func(t *testing.T) {
 				r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(tt.body))
 				_, err := parseExportRequest(r)
 				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErrContains)
 			})
 		}
 
