@@ -433,19 +433,22 @@ func TestExport(t *testing.T) {
 			require.False(t, cp.stored.LastExportTime.After(after))
 		})
 
-		t.Run("fullモードのとき、checkpointを更新しない", func(t *testing.T) {
+		t.Run("fullモードのエクスポートが成功しても、次回incrementalが読むcheckpointの最終エクスポート時刻は変わらない", func(t *testing.T) {
+			seededExportTime := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
 			wh := &stubWarehouse{}
-			cp := &stubCheckpoint{}
+			cp := &stubCheckpoint{stored: &model.Checkpoint{Table: "tst_table_a", LastExportTime: seededExportTime}}
 
 			svc := New(cfg, src, stg, wh, cp)
 			results := svc.Export(context.Background(), []string{"tst_table_a"}, "full", "2024-01-01", "2024-02-01")
 
 			require.Len(t, results, 1)
 			require.True(t, results[0].IsSuccess)
-			require.False(t, cp.updateCalled)
+			stored, err := cp.Get(context.Background(), "tst_table_a")
+			require.NoError(t, err)
+			require.True(t, stored.LastExportTime.Equal(seededExportTime))
 		})
 
 		t.Run("エクスポート成功後、ステージングファイルが削除される", func(t *testing.T) {
