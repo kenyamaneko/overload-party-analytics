@@ -14,7 +14,6 @@ import (
 
 // テスト用モック
 
-// stagingURIFor は stubStaging.Write が返すステージング URI を再現します。
 func stagingURIFor(table string) string {
 	return fmt.Sprintf("gs://stub-bucket/exports/%s.jsonl", table)
 }
@@ -90,6 +89,7 @@ type stubCheckpoint struct {
 	getErr       error
 	updateErr    error
 	gets         []string
+	updates      []string
 	updateCalled bool
 }
 
@@ -103,8 +103,9 @@ func (s *stubCheckpoint) Get(_ context.Context, table string) (*model.Checkpoint
 	}
 	return &model.Checkpoint{Table: table}, nil
 }
-func (s *stubCheckpoint) Update(_ context.Context, _ string, cp *model.Checkpoint) error {
+func (s *stubCheckpoint) Update(_ context.Context, table string, cp *model.Checkpoint) error {
 	s.updateCalled = true
+	s.updates = append(s.updates, table)
 	if s.updateErr != nil {
 		return s.updateErr
 	}
@@ -211,25 +212,26 @@ func TestExport(t *testing.T) {
 		})
 
 		failureStageCases := []struct {
-			name                 string
-			table                string
-			mode                 string
-			startDate            string
-			endDate              string
-			rows                 []map[string]interface{}
-			checkpointGetErr     error
-			sourceErr            error
-			stagingWriteErr      error
-			warehouseLoadErr     error
-			checkpointUpdateErr  error
-			wantErrorContains    []string
-			wantRowsExported     int64
-			wantFilePath         string
-			wantCheckpointFailed bool
-			wantCheckpointGets   int
-			wantSourceQueries    int
-			wantStagingWrites    int
-			wantWarehouseLoads   int
+			name                  string
+			table                 string
+			mode                  string
+			startDate             string
+			endDate               string
+			rows                  []map[string]interface{}
+			checkpointGetErr      error
+			sourceErr             error
+			stagingWriteErr       error
+			warehouseLoadErr      error
+			checkpointUpdateErr   error
+			wantErrorContains     []string
+			wantRowsExported      int64
+			wantFilePath          string
+			wantCheckpointFailed  bool
+			wantCheckpointGets    int
+			wantSourceQueries     int
+			wantStagingWrites     int
+			wantWarehouseLoads    int
+			wantCheckpointUpdates int
 		}{
 			{
 				name:               "設定に無いテーブルを指定したとき、失敗となり誤り内容にテーブル名が含まれ、checkpoint取得以降は行われない",
@@ -315,19 +317,20 @@ func TestExport(t *testing.T) {
 				wantWarehouseLoads: 0,
 			},
 			{
-				name:                 "checkpointの更新に失敗したとき、失敗となるが行数とファイルパスは結果に残る",
-				table:                "tst_table_a",
-				mode:                 "incremental",
-				rows:                 threeRows,
-				checkpointUpdateErr:  errors.New("firestore: UNAVAILABLE"),
-				wantErrorContains:    []string{"checkpoint update failed"},
-				wantRowsExported:     3,
-				wantFilePath:         stagingURIFor("tst_table_a"),
-				wantCheckpointFailed: true,
-				wantCheckpointGets:   1,
-				wantSourceQueries:    1,
-				wantStagingWrites:    1,
-				wantWarehouseLoads:   1,
+				name:                  "checkpointの更新に失敗したとき、失敗となるが行数とファイルパスは結果に残る",
+				table:                 "tst_table_a",
+				mode:                  "incremental",
+				rows:                  threeRows,
+				checkpointUpdateErr:   errors.New("firestore: UNAVAILABLE"),
+				wantErrorContains:     []string{"checkpoint update failed"},
+				wantRowsExported:      3,
+				wantFilePath:          stagingURIFor("tst_table_a"),
+				wantCheckpointFailed:  true,
+				wantCheckpointGets:    1,
+				wantSourceQueries:     1,
+				wantStagingWrites:     1,
+				wantWarehouseLoads:    1,
+				wantCheckpointUpdates: 1,
 			},
 		}
 		for _, tt := range failureStageCases {
@@ -354,6 +357,11 @@ func TestExport(t *testing.T) {
 				require.Len(t, cp.gets, tt.wantCheckpointGets)
 				for _, g := range cp.gets {
 					require.Equal(t, tt.table, g)
+				}
+
+				require.Len(t, cp.updates, tt.wantCheckpointUpdates)
+				for _, u := range cp.updates {
+					require.Equal(t, tt.table, u)
 				}
 				require.Nil(t, cp.stored)
 
