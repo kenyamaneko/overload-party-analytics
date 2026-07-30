@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,16 +14,24 @@ import (
 
 // テスト用モック
 
-const stubStagingURI = "gs://stub-bucket/exports/stub.jsonl"
+func stagingURIFor(table string) string {
+	return fmt.Sprintf("gs://stub-bucket/exports/%s.jsonl", table)
+}
+
+type sourceQuery struct {
+	table     string
+	startTime time.Time
+	endTime   time.Time
+}
 
 type stubSource struct {
 	rows    []map[string]interface{}
 	err     error
-	queried bool
+	queries []sourceQuery
 }
 
-func (s *stubSource) Query(_ context.Context, _ model.TableConfig, _, _ time.Time) ([]map[string]interface{}, error) {
-	s.queried = true
+func (s *stubSource) Query(_ context.Context, tableConfig model.TableConfig, startTime, endTime time.Time) ([]map[string]interface{}, error) {
+	s.queries = append(s.queries, sourceQuery{table: tableConfig.SourceTable, startTime: startTime, endTime: endTime})
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -30,19 +39,24 @@ func (s *stubSource) Query(_ context.Context, _ model.TableConfig, _, _ time.Tim
 }
 func (s *stubSource) Close() {}
 
-type stubStaging struct {
-	writeCalled bool
-	writeErr    error
-	deleteErr   error
-	deleted     []string
+type stagingWrite struct {
+	table    string
+	rowCount int
 }
 
-func (s *stubStaging) Write(_ context.Context, _ string, _ []map[string]interface{}, _ time.Time) (string, error) {
-	s.writeCalled = true
+type stubStaging struct {
+	writeErr  error
+	deleteErr error
+	written   []stagingWrite
+	deleted   []string
+}
+
+func (s *stubStaging) Write(_ context.Context, table string, rows []map[string]interface{}, _ time.Time) (string, error) {
+	s.written = append(s.written, stagingWrite{table: table, rowCount: len(rows)})
 	if s.writeErr != nil {
 		return "", s.writeErr
 	}
-	return stubStagingURI, nil
+	return stagingURIFor(table), nil
 }
 func (s *stubStaging) Delete(_ context.Context, uri string) error {
 	s.deleted = append(s.deleted, uri)
@@ -50,16 +64,23 @@ func (s *stubStaging) Delete(_ context.Context, uri string) error {
 }
 func (s *stubStaging) Close() error { return nil }
 
-type stubWarehouse struct {
-	lastMode   model.DedupMode
-	loadCalled bool
-	loadErr    error
+type warehouseLoad struct {
+	table   string
+	gcsPath string
+	mode    model.DedupMode
 }
 
-func (s *stubWarehouse) Load(_ context.Context, _ model.TableConfig, _ string, mode model.DedupMode) error {
-	s.loadCalled = true
-	s.lastMode = mode
-	return s.loadErr
+type stubWarehouse struct {
+	loadErr error
+	loaded  []warehouseLoad
+}
+
+func (s *stubWarehouse) Load(_ context.Context, tableConfig model.TableConfig, gcsPath string, mode model.DedupMode) error {
+	s.loaded = append(s.loaded, warehouseLoad{table: tableConfig.BigQueryTable, gcsPath: gcsPath, mode: mode})
+	if s.loadErr != nil {
+		return s.loadErr
+	}
+	return nil
 }
 func (s *stubWarehouse) Close() error { return nil }
 
@@ -67,12 +88,13 @@ type stubCheckpoint struct {
 	stored       *model.Checkpoint
 	getErr       error
 	updateErr    error
-	getCalled    bool
+	gets         []string
+	updates      []string
 	updateCalled bool
 }
 
 func (s *stubCheckpoint) Get(_ context.Context, table string) (*model.Checkpoint, error) {
-	s.getCalled = true
+	s.gets = append(s.gets, table)
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
@@ -81,8 +103,9 @@ func (s *stubCheckpoint) Get(_ context.Context, table string) (*model.Checkpoint
 	}
 	return &model.Checkpoint{Table: table}, nil
 }
-func (s *stubCheckpoint) Update(_ context.Context, _ string, cp *model.Checkpoint) error {
+func (s *stubCheckpoint) Update(_ context.Context, table string, cp *model.Checkpoint) error {
 	s.updateCalled = true
+	s.updates = append(s.updates, table)
 	if s.updateErr != nil {
 		return s.updateErr
 	}
@@ -182,138 +205,132 @@ func TestExport(t *testing.T) {
 			require.True(t, r.IsSuccess)
 			require.Equal(t, int64(0), r.RowsExported)
 			require.Empty(t, r.FilePath)
-			require.False(t, stg.writeCalled)
-			require.False(t, wh.loadCalled)
-			require.False(t, cp.updateCalled)
+			require.Empty(t, stg.written)
+			require.Empty(t, wh.loaded)
+			require.Nil(t, cp.stored)
 			require.Empty(t, stg.deleted)
 		})
 
 		failureStageCases := []struct {
-			name                    string
-			table                   string
-			mode                    string
-			startDate               string
-			endDate                 string
-			rows                    []map[string]interface{}
-			checkpointGetErr        error
-			sourceErr               error
-			stagingWriteErr         error
-			warehouseLoadErr        error
-			checkpointUpdateErr     error
-			wantErrorContains       []string
-			wantRowsExported        int64
-			wantFilePath            string
-			wantCheckpointFailed    bool
-			wantCheckpointGetCalled bool
-			wantSourceQueried       bool
-			wantStagingWriteCalled  bool
-			wantWarehouseLoadCalled bool
-			wantCheckpointUpdate    bool
+			name                  string
+			table                 string
+			mode                  string
+			startDate             string
+			endDate               string
+			rows                  []map[string]interface{}
+			checkpointGetErr      error
+			sourceErr             error
+			stagingWriteErr       error
+			warehouseLoadErr      error
+			checkpointUpdateErr   error
+			wantErrorContains     []string
+			wantRowsExported      int64
+			wantFilePath          string
+			wantCheckpointFailed  bool
+			wantCheckpointGets    int
+			wantSourceQueries     int
+			wantStagingWrites     int
+			wantWarehouseLoads    int
+			wantCheckpointUpdates int
 		}{
 			{
-				name:                    "設定に無いテーブルを指定したとき、失敗となり誤り内容にテーブル名が含まれ、checkpoint取得以降は行われない",
-				table:                   "tst_missing",
-				mode:                    "incremental",
-				rows:                    singleRow,
-				wantErrorContains:       []string{"tst_missing", "not found in config"},
-				wantRowsExported:        0,
-				wantFilePath:            "",
-				wantCheckpointGetCalled: false,
-				wantSourceQueried:       false,
-				wantStagingWriteCalled:  false,
-				wantWarehouseLoadCalled: false,
-				wantCheckpointUpdate:    false,
+				name:               "設定に無いテーブルを指定したとき、失敗となり誤り内容にテーブル名が含まれ、checkpoint取得以降は行われない",
+				table:              "tst_missing",
+				mode:               "incremental",
+				rows:               singleRow,
+				wantErrorContains:  []string{"tst_missing", "not found in config"},
+				wantRowsExported:   0,
+				wantFilePath:       "",
+				wantCheckpointGets: 0,
+				wantSourceQueries:  0,
+				wantStagingWrites:  0,
+				wantWarehouseLoads: 0,
 			},
 			{
-				name:                    "checkpointの取得に失敗したとき、失敗となり行の読み取りは行われない",
-				table:                   "tst_table_a",
-				mode:                    "incremental",
-				rows:                    singleRow,
-				checkpointGetErr:        errors.New("dummy get checkpoint error"),
-				wantErrorContains:       []string{"get checkpoint"},
-				wantRowsExported:        0,
-				wantFilePath:            "",
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       false,
-				wantStagingWriteCalled:  false,
-				wantWarehouseLoadCalled: false,
-				wantCheckpointUpdate:    false,
+				name:               "checkpointの取得に失敗したとき、失敗となり行の読み取りは行われない",
+				table:              "tst_table_a",
+				mode:               "incremental",
+				rows:               singleRow,
+				checkpointGetErr:   errors.New("dummy get checkpoint error"),
+				wantErrorContains:  []string{"get checkpoint"},
+				wantRowsExported:   0,
+				wantFilePath:       "",
+				wantCheckpointGets: 1,
+				wantSourceQueries:  0,
+				wantStagingWrites:  0,
+				wantWarehouseLoads: 0,
 			},
 			{
-				name:                    "行の読み取りに失敗したとき、失敗となりステージングへの書き込みは行われない",
-				table:                   "tst_table_a",
-				mode:                    "incremental",
-				rows:                    singleRow,
-				sourceErr:               errors.New("dummy query source error"),
-				wantErrorContains:       []string{"query source"},
-				wantRowsExported:        0,
-				wantFilePath:            "",
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       true,
-				wantStagingWriteCalled:  false,
-				wantWarehouseLoadCalled: false,
-				wantCheckpointUpdate:    false,
+				name:               "行の読み取りに失敗したとき、失敗となりステージングへの書き込みは行われない",
+				table:              "tst_table_a",
+				mode:               "incremental",
+				rows:               singleRow,
+				sourceErr:          errors.New("dummy query source error"),
+				wantErrorContains:  []string{"query source"},
+				wantRowsExported:   0,
+				wantFilePath:       "",
+				wantCheckpointGets: 1,
+				wantSourceQueries:  1,
+				wantStagingWrites:  0,
+				wantWarehouseLoads: 0,
 			},
 			{
-				name:                    "ステージングへの書き込みに失敗したとき、失敗となりウェアハウスへのロードは行われない",
-				table:                   "tst_table_a",
-				mode:                    "incremental",
-				rows:                    singleRow,
-				stagingWriteErr:         errors.New("dummy write to staging error"),
-				wantErrorContains:       []string{"write to staging"},
-				wantRowsExported:        0,
-				wantFilePath:            "",
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       true,
-				wantStagingWriteCalled:  true,
-				wantWarehouseLoadCalled: false,
-				wantCheckpointUpdate:    false,
+				name:               "ステージングへの書き込みに失敗したとき、失敗となりウェアハウスへのロードは行われない",
+				table:              "tst_table_a",
+				mode:               "incremental",
+				rows:               singleRow,
+				stagingWriteErr:    errors.New("dummy write to staging error"),
+				wantErrorContains:  []string{"write to staging"},
+				wantRowsExported:   0,
+				wantFilePath:       "",
+				wantCheckpointGets: 1,
+				wantSourceQueries:  1,
+				wantStagingWrites:  1,
+				wantWarehouseLoads: 0,
 			},
 			{
-				name:                    "ウェアハウスへのロードに失敗したとき、失敗となりステージングのファイルパスが結果に残り、checkpointは更新されず、ステージングも削除されない",
-				table:                   "tst_table_a",
-				mode:                    "incremental",
-				rows:                    singleRow,
-				warehouseLoadErr:        errors.New("dummy load to warehouse error"),
-				wantErrorContains:       []string{"load to warehouse"},
-				wantRowsExported:        0,
-				wantFilePath:            stubStagingURI,
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       true,
-				wantStagingWriteCalled:  true,
-				wantWarehouseLoadCalled: true,
-				wantCheckpointUpdate:    false,
+				name:               "ウェアハウスへのロードに失敗したとき、失敗となりステージングのファイルパスが結果に残り、checkpointは更新されず、ステージングも削除されない",
+				table:              "tst_table_a",
+				mode:               "incremental",
+				rows:               singleRow,
+				warehouseLoadErr:   errors.New("dummy load to warehouse error"),
+				wantErrorContains:  []string{"load to warehouse"},
+				wantRowsExported:   0,
+				wantFilePath:       stagingURIFor("tst_table_a"),
+				wantCheckpointGets: 1,
+				wantSourceQueries:  1,
+				wantStagingWrites:  1,
+				wantWarehouseLoads: 1,
 			},
 			{
-				name:                    "fullモードで開始日が不正な日付のとき、失敗となりエラー内容に開始日の値が含まれ、行の読み取りは行われない",
-				table:                   "tst_table_a",
-				mode:                    "full",
-				startDate:               "not-a-date",
-				rows:                    singleRow,
-				wantErrorContains:       []string{"not-a-date"},
-				wantRowsExported:        0,
-				wantFilePath:            "",
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       false,
-				wantStagingWriteCalled:  false,
-				wantWarehouseLoadCalled: false,
-				wantCheckpointUpdate:    false,
+				name:               "fullモードで開始日が不正な日付のとき、失敗となりエラー内容に開始日の値が含まれ、行の読み取りは行われない",
+				table:              "tst_table_a",
+				mode:               "full",
+				startDate:          "not-a-date",
+				rows:               singleRow,
+				wantErrorContains:  []string{"not-a-date"},
+				wantRowsExported:   0,
+				wantFilePath:       "",
+				wantCheckpointGets: 1,
+				wantSourceQueries:  0,
+				wantStagingWrites:  0,
+				wantWarehouseLoads: 0,
 			},
 			{
-				name:                    "checkpointの更新に失敗したとき、失敗となるが行数とファイルパスは結果に残る",
-				table:                   "tst_table_a",
-				mode:                    "incremental",
-				rows:                    threeRows,
-				checkpointUpdateErr:     errors.New("firestore: UNAVAILABLE"),
-				wantErrorContains:       []string{"checkpoint update failed"},
-				wantRowsExported:        3,
-				wantFilePath:            stubStagingURI,
-				wantCheckpointFailed:    true,
-				wantCheckpointGetCalled: true,
-				wantSourceQueried:       true,
-				wantStagingWriteCalled:  true,
-				wantWarehouseLoadCalled: true,
-				wantCheckpointUpdate:    true,
+				name:                  "checkpointの更新に失敗したとき、失敗となるが行数とファイルパスは結果に残る",
+				table:                 "tst_table_a",
+				mode:                  "incremental",
+				rows:                  threeRows,
+				checkpointUpdateErr:   errors.New("firestore: UNAVAILABLE"),
+				wantErrorContains:     []string{"checkpoint update failed"},
+				wantRowsExported:      3,
+				wantFilePath:          stagingURIFor("tst_table_a"),
+				wantCheckpointFailed:  true,
+				wantCheckpointGets:    1,
+				wantSourceQueries:     1,
+				wantStagingWrites:     1,
+				wantWarehouseLoads:    1,
+				wantCheckpointUpdates: 1,
 			},
 		}
 		for _, tt := range failureStageCases {
@@ -336,11 +353,37 @@ func TestExport(t *testing.T) {
 				require.Equal(t, tt.wantRowsExported, r.RowsExported)
 				require.Equal(t, tt.wantFilePath, r.FilePath)
 				require.Equal(t, tt.wantCheckpointFailed, r.IsCheckpointFailed)
-				require.Equal(t, tt.wantCheckpointGetCalled, cp.getCalled)
-				require.Equal(t, tt.wantSourceQueried, src.queried)
-				require.Equal(t, tt.wantStagingWriteCalled, stg.writeCalled)
-				require.Equal(t, tt.wantWarehouseLoadCalled, wh.loadCalled)
-				require.Equal(t, tt.wantCheckpointUpdate, cp.updateCalled)
+
+				require.Len(t, cp.gets, tt.wantCheckpointGets)
+				for _, g := range cp.gets {
+					require.Equal(t, tt.table, g)
+				}
+
+				require.Len(t, cp.updates, tt.wantCheckpointUpdates)
+				for _, u := range cp.updates {
+					require.Equal(t, tt.table, u)
+				}
+				require.Nil(t, cp.stored)
+
+				require.Len(t, src.queries, tt.wantSourceQueries)
+				for _, q := range src.queries {
+					require.Equal(t, tt.table, q.table)
+					// failureStageCases のどのケースも checkpoint をシードしないため、ゼロ値になる。
+					require.True(t, q.startTime.IsZero())
+				}
+
+				require.Len(t, stg.written, tt.wantStagingWrites)
+				for _, w := range stg.written {
+					require.Equal(t, tt.table, w.table)
+					require.Equal(t, len(tt.rows), w.rowCount)
+				}
+
+				require.Len(t, wh.loaded, tt.wantWarehouseLoads)
+				for _, l := range wh.loaded {
+					require.Equal(t, tt.table, l.table)
+					require.Equal(t, stagingURIFor(tt.table), l.gcsPath)
+				}
+
 				require.Empty(t, stg.deleted)
 			})
 		}
@@ -358,7 +401,8 @@ func TestExport(t *testing.T) {
 			require.Len(t, results, 1)
 			require.True(t, results[0].IsSuccess)
 			require.Equal(t, int64(1), results[0].RowsExported)
-			require.True(t, cp.updateCalled)
+			require.NotNil(t, cp.stored)
+			require.Equal(t, int64(1), cp.stored.LastRowCount)
 		})
 
 		dedupModeCases := []struct {
@@ -394,7 +438,8 @@ func TestExport(t *testing.T) {
 				svc := New(cfg, src, stg, wh, cp)
 				svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
 
-				require.Equal(t, tt.wantMode, wh.lastMode)
+				require.Len(t, wh.loaded, 1)
+				require.Equal(t, tt.wantMode, wh.loaded[0].mode)
 			})
 		}
 
@@ -410,7 +455,7 @@ func TestExport(t *testing.T) {
 
 			require.Len(t, results, 1)
 			require.Equal(t, int64(1), results[0].RowsExported)
-			require.Equal(t, stubStagingURI, results[0].FilePath)
+			require.Equal(t, stagingURIFor("tst_table_a"), results[0].FilePath)
 		})
 
 		t.Run("3行エクスポートしたとき、結果の行数は3になりcheckpointにも行数3と実行時刻が保存される", func(t *testing.T) {
@@ -494,7 +539,6 @@ func TestResolveTimeRange(t *testing.T) {
 				wantEnd:    now,
 			},
 			{
-				// checkpoint を渡しても full モードは無視して epoch から始まることを確かめる
 				name:       "full モードで日付未指定のとき、ゼロ値から現在までの範囲になる",
 				mode:       "full",
 				checkpoint: checkpoint,

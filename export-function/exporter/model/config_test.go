@@ -43,8 +43,9 @@ tables:
 		})
 
 		invalidCases := []struct {
-			name string
-			yaml string
+			name            string
+			yaml            string
+			wantErrContains string
 		}{
 			{
 				name: "source_table が無いとき、エラーになる",
@@ -54,6 +55,7 @@ tables:
     bigquery_table: games
     query: "SELECT 1"
 `,
+				wantErrContains: "source_table is required",
 			},
 			{
 				name: "bigquery_table が無いとき、エラーになる",
@@ -63,6 +65,7 @@ tables:
     source_table: games
     query: "SELECT 1"
 `,
+				wantErrContains: "bigquery_table is required",
 			},
 			{
 				name: "query が無いとき、エラーになる",
@@ -72,26 +75,31 @@ tables:
     source_table: games
     bigquery_table: games
 `,
+				wantErrContains: "query is required",
 			},
 			{
-				name: "tables が空のとき、エラーになる",
-				yaml: `tables:`,
+				name:            "tables が空のとき、エラーになる",
+				yaml:            `tables:`,
+				wantErrContains: "no tables defined in config",
 			},
 			{
-				name: "YAML として解析できないとき、エラーになる",
-				yaml: `{{{invalid yaml`,
+				name:            "YAML として解析できないとき、エラーになる",
+				yaml:            `{{{invalid yaml`,
+				wantErrContains: "parse config file",
 			},
 		}
 		for _, tt := range invalidCases {
 			t.Run(tt.name, func(t *testing.T) {
 				_, err := LoadConfig(writeConfigFile(t, tt.yaml))
 				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.wantErrContains)
 			})
 		}
 
 		t.Run("設定ファイルが存在しないとき、エラーになる", func(t *testing.T) {
 			_, err := LoadConfig("/nonexistent/path/config.yaml")
 			require.Error(t, err)
+			require.Contains(t, err.Error(), "read config file")
 		})
 
 		t.Run("source_table が無いとき、エラーメッセージに該当テーブル名が含まれる", func(t *testing.T) {
