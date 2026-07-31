@@ -2,6 +2,8 @@
 
 Cloud SQL PostgreSQL → BigQuery データエクスポート基盤
 
+[テスト観点カタログ](https://kenyamaneko.github.io/overload-party-analytics/): テスト名から生成した、テスト済みの観点の一覧。
+
 ## 概要
 
 ゲームサーバーの Cloud SQL PostgreSQL データベースから BigQuery にデータをエクスポートし、ゲームバランス分析・ダッシュボード構築を行うための基盤。
