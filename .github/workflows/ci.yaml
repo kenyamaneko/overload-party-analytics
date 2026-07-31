@@ -4,10 +4,16 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  workflow_call:
+    outputs:
+      code-changed:
+        description: "'true' when the run touched code. The test results exist only then."
+        value: ${{ jobs.changes.outputs.code }}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # main の run は GitHub Pages への deploy に繋がるため、後続の push で打ち切らない
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -58,6 +64,14 @@ jobs:
           json-path: export-function/go-test-unit.json
           title: 単体テスト結果
           module-dir: export-function
+
+      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-test-unit
+          path: export-function/go-test-unit.json
+          retention-days: 1
 
       - name: Build
         run: go build ./...
