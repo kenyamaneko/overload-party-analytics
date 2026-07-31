@@ -43,8 +43,8 @@ jobs:
         with:
           title: analytics テスト観点カタログ
           sections: |
-            外から見た振る舞い:analytics:go-json:go-test-unit.json:export-to-bq/handler
-            内部の挙動:analytics:go-json:go-test-unit.json:export-to-bq/exporter/,export-to-bq
+            外から見た振る舞い:analytics:go-json:go-test-unit.json:export-to-bq
+            内部の挙動:analytics:go-json:go-test-unit.json:export-to-bq/exporter/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
