@@ -25,4 +25,5 @@ jobs:
       module-dir: export-function
       has-integration-tests: false
       has-image-scan: false
+      needs-private-modules: false
     secrets: inherit
