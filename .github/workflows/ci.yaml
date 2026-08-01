@@ -8,7 +8,7 @@ on:
     outputs:
       code-changed:
         description: "'true' when the run touched code. The test results exist only then."
-        value: ${{ jobs.changes.outputs.code }}
+        value: ${{ jobs.ci.outputs.code-changed }}
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,59 +19,10 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 5
-    outputs:
-      code: ${{ steps.detect.outputs.changed }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Detect code change
-        id: detect
-        uses: kenyamaneko/overload-party-common/.github/actions/detect-code-change@main
-
-  build:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubicloud-standard-2
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: export-function
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: export-function/go.mod
-
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Run unit tests
-        run: go test ./... -json | tee go-test-unit.json
-
-      - name: Report test results
-        if: ${{ !cancelled() }}
-        uses: kenyamaneko/overload-party-common/.github/actions/go-test-report@main
-        with:
-          json-path: export-function/go-test-unit.json
-          title: 単体テスト結果
-          module-dir: export-function
-
-      # 同一 run 内でテスト観点カタログを組むためだけに使うので保持は最短にする
-      - name: Upload unit test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-test-unit
-          path: export-function/go-test-unit.json
-          retention-days: 1
-
-      - name: Build
-        run: go build ./...
+  ci:
+    uses: kenyamaneko/overload-party-common/.github/workflows/go-service-ci.yaml@main
+    with:
+      module-dir: export-function
+      has-integration-tests: false
+      has-image-scan: false
+    secrets: inherit
