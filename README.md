@@ -32,6 +32,7 @@ overload-party-analytics/
 │   ├── go.mod
 │   ├── main.go
 │   ├── config.yaml        # テーブル定義・クエリ
+│   ├── cmd/local/         # ローカル起動用エントリポイント
 │   ├── handler/           # HTTP リクエスト処理
 │   └── exporter/          # エクスポートロジック
 │       ├── model/         # 設定・エクスポート結果モデル
@@ -104,8 +105,12 @@ export BQ_PROJECT_ID="overload-party-dev"
 export BQ_DATASET_ID="analytics"
 export GCS_BUCKET="overload-party-dev-bq-staging"
 
+# ローカル起動用。デプロイ時と同じくエントリポイントを "/" で受けるため FUNCTION_TARGET を渡す
+export PORT="8080"
+export FUNCTION_TARGET="ExportPostgresToBigQuery"
+
 # ローカル実行
-go run main.go
+go run ./cmd/local
 
 # 動作確認 (別ターミナル)
 curl -X POST http://localhost:8080 \
