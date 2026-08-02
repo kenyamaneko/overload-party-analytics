@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -80,6 +81,9 @@ func convertPgValue(val interface{}) (interface{}, error) {
 		return v, nil
 	case time.Time:
 		return v.Format(time.RFC3339Nano), nil
+	case [16]byte:
+		// BigQuery 側の列が STRING のため、pgx が返す uuid の生バイト列を文字列表現にする
+		return uuid.UUID(v).String(), nil
 	case []byte:
 		// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
 		return json.RawMessage(v), nil

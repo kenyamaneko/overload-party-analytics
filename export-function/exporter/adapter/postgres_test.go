@@ -160,6 +160,44 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "tech", snapshot["faction"])
 		})
 
+		t.Run("uuid のカラムのとき、ハイフン区切りの文字列に変換される", func(t *testing.T) {
+			rows := newMockRows(
+				[]string{"player_id"},
+				[][]any{{[16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0}}},
+			)
+
+			result, err := pgRowsToMaps(rows)
+			require.NoError(t, err)
+
+			require.Equal(t, "01234567-89ab-cdef-1234-56789abcdef0", result[0]["player_id"])
+		})
+
+		t.Run("全バイトが0のuuidのカラムのとき、ゼロの文字列表現に変換される", func(t *testing.T) {
+			rows := newMockRows(
+				[]string{"player_id"},
+				[][]any{{[16]byte{}}},
+			)
+
+			result, err := pgRowsToMaps(rows)
+			require.NoError(t, err)
+
+			require.Equal(t, "00000000-0000-0000-0000-000000000000", result[0]["player_id"])
+		})
+
+		t.Run("uuid のカラムを JSON 化したとき、文字列として出力される", func(t *testing.T) {
+			rows := newMockRows(
+				[]string{"player_id"},
+				[][]any{{[16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0}}},
+			)
+
+			result, err := pgRowsToMaps(rows)
+			require.NoError(t, err)
+
+			encoded, err := json.Marshal(result[0])
+			require.NoError(t, err)
+			require.JSONEq(t, `{"player_id":"01234567-89ab-cdef-1234-56789abcdef0"}`, string(encoded))
+		})
+
 		t.Run("小数・16bit整数・32bit整数のカラムのとき、値が保持される", func(t *testing.T) {
 			rows := newMockRows(
 				[]string{"ratio", "small", "medium"},
@@ -179,11 +217,6 @@ func TestPgRowsToMaps(t *testing.T) {
 			value    any
 			wantType string
 		}{
-			{
-				name:     "uuid のカラムのとき、変換規則が無いためエラーになり型が示される",
-				value:    [16]byte{},
-				wantType: "[16]uint8",
-			},
 			{
 				name:     "配列のカラムのとき、変換規則が無いためエラーになり型が示される",
 				value:    []string{"a", "b"},
