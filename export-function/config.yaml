@@ -69,7 +69,7 @@ tables:
   deck_cards:
     source_table: card.deck_cards
     bigquery_table: deck_cards
-    natural_key: [player_id, deck_id, card_id, art_no]
+    natural_key: [player_id, deck_id, card_id, art_no, updated_at]
     query: |
       SELECT
         dc.player_id, dc.deck_id, dc.card_id, dc.art_no, dc.count,

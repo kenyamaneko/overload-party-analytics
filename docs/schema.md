@@ -174,9 +174,9 @@ NPC 戦では NPC 側の行が存在しません (NPC はプレイヤー ID を�
 
 ---
 
-### deck_cards
+### deck_cards (append-only)
 
-プレイヤーのデッキ構成データ。
+プレイヤーのデッキ構成データ。デッキを編集するたびに新しい行が追加されます。最新状態は `deck_cards_latest` VIEW を使用。
 
 取得元: `card.deck_cards` (デッキ属性と更新日時は `card.decks` を JOIN して取得)
 
@@ -200,6 +200,10 @@ NPC 戦では NPC 側の行が存在しません (NPC はプレイヤー ID を�
 - ファクション別人気カード
 
 デッキ編集は `card.decks.updated_at` だけを動かすため、増分の基準にこの列を使います。
+
+対戦で実際に使われたデッキは `battle.game_decks` が持ちますが、現在はエクスポート対象外です。
+そのため「対戦のファクション別勝率」はこのテーブルからは求まりません
+(1 プレイヤーが複数ファクションのデッキを持てるため、`player_id` だけで結ぶと重複します)。
 
 ---
 
@@ -298,6 +302,19 @@ card_definitions テーブルから card_id ごとに最新の 1 行を返す VI
 SELECT * EXCEPT(rn) FROM (
   SELECT *, ROW_NUMBER() OVER (PARTITION BY card_id ORDER BY updated_at DESC) AS rn
   FROM analytics.card_definitions
+) WHERE rn = 1
+```
+
+### deck_cards_latest
+
+deck_cards テーブルからデッキ内カードごとに最新の 1 行を返す VIEW。
+
+```sql
+SELECT * EXCEPT(rn) FROM (
+  SELECT *, ROW_NUMBER() OVER (
+    PARTITION BY player_id, deck_id, card_id, art_no ORDER BY updated_at DESC
+  ) AS rn
+  FROM analytics.deck_cards
 ) WHERE rn = 1
 ```
 

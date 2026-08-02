@@ -198,7 +198,7 @@ resource "google_bigquery_table" "card_definitions" {
   }
 }
 
-# Deck Cards Table
+# Deck Cards Table (append-only, use deck_cards_latest view for current state)
 resource "google_bigquery_table" "deck_cards" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
@@ -319,6 +319,31 @@ resource "google_bigquery_table" "players_latest" {
   }
 
   depends_on = [google_bigquery_table.players]
+}
+
+# Deck Cards Latest View (dedup: one row per deck card, most recent updated_at wins)
+resource "google_bigquery_table" "deck_cards_latest" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  table_id   = "deck_cards_latest"
+
+  view {
+    query          = <<-SQL
+      SELECT * EXCEPT(rn) FROM (
+        SELECT *, ROW_NUMBER() OVER (
+          PARTITION BY player_id, deck_id, card_id, art_no ORDER BY updated_at DESC
+        ) AS rn
+        FROM `${var.project_id}.${var.dataset_id}.deck_cards`
+      ) WHERE rn = 1
+    SQL
+    use_legacy_sql = false
+  }
+
+  labels = {
+    env = var.env
+  }
+
+  depends_on = [google_bigquery_table.deck_cards]
 }
 
 # Card Definitions Latest View (dedup: one row per card_id)

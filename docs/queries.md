@@ -322,27 +322,19 @@ ORDER BY purchase_count DESC;
 
 ## ゲームバランス分析（詳細）
 
-### ファクション別勝率
+### ファクション別のデッキ構築数
 
-デッキの宣言陣営は `deck_cards` が持つため、プレイヤーの直近デッキと突き合わせます。
+対戦で実際に使われたデッキ (`battle.game_decks`) はエクスポートしていないため、対戦単位の
+ファクション別勝率は求まりません。構築されたデッキの分布までを見ます。
 
 ```sql
-WITH player_faction AS (
-  SELECT DISTINCT player_id, deck_id, faction
-  FROM `overload-party-dev.analytics.deck_cards`
-)
 SELECT
-  pf.faction,
-  COUNT(*) AS total_games,
-  COUNTIF(g.winning_player_num = gp.player_num) AS wins,
-  ROUND(COUNTIF(g.winning_player_num = gp.player_num) / COUNT(*) * 100, 2) AS win_rate
-FROM `overload-party-dev.analytics.game_players` gp
-JOIN `overload-party-dev.analytics.games_latest` g USING (game_id)
-JOIN player_faction pf ON pf.player_id = gp.player_id
-WHERE g.status = 'finished'
-  AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY pf.faction
-ORDER BY win_rate DESC;
+  faction,
+  COUNT(DISTINCT CONCAT(player_id, '-', CAST(deck_id AS STRING))) AS deck_count,
+  COUNT(DISTINCT player_id) AS player_count
+FROM `overload-party-dev.analytics.deck_cards_latest`
+GROUP BY faction
+ORDER BY deck_count DESC;
 ```
 
 ### 決着理由の分布
@@ -385,9 +377,9 @@ SELECT
   cd.card_type,
   COUNT(DISTINCT CONCAT(dc.player_id, '-', CAST(dc.deck_id AS STRING))) AS decks_including,
   ROUND(COUNT(DISTINCT CONCAT(dc.player_id, '-', CAST(dc.deck_id AS STRING))) /
-    (SELECT COUNT(DISTINCT CONCAT(player_id, '-', CAST(deck_id AS STRING))) FROM `overload-party-dev.analytics.deck_cards`) * 100, 2
+    (SELECT COUNT(DISTINCT CONCAT(player_id, '-', CAST(deck_id AS STRING))) FROM `overload-party-dev.analytics.deck_cards_latest`) * 100, 2
   ) AS adoption_rate
-FROM `overload-party-dev.analytics.deck_cards` dc
+FROM `overload-party-dev.analytics.deck_cards_latest` dc
 JOIN `overload-party-dev.analytics.card_definitions_latest` cd ON dc.card_id = cd.card_id
 GROUP BY dc.card_id, cd.card_name, cd.faction, cd.card_type
 ORDER BY adoption_rate DESC;
