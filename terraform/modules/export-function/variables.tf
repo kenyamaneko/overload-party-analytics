@@ -24,3 +24,18 @@ variable "source_archive" {
   type        = string
   default     = "export-function-latest.zip"
 }
+
+variable "cloudsql_instance_name" {
+  description = "Cloud SQL instance name owned by overload-party-infra"
+  type        = string
+}
+
+variable "cloudsql_connection_name" {
+  description = "Cloud SQL connection name (project:region:instance)"
+  type        = string
+}
+
+variable "database_name" {
+  description = "PostgreSQL database name holding the service schemas"
+  type        = string
+}

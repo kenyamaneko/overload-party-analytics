@@ -63,13 +63,13 @@ overload-party-analytics/
 
 ### 環境変数
 
+他のサービスと同じ変数名・同じ接続方式（IAM データベース認証）を使う。
+
 | 変数名 | 説明 | 例 |
 |--------|------|-----|
-| `INSTANCE_CONNECTION_NAME` | Cloud SQL インスタンス接続名（Cloud Functions 用） | `overload-party-dev:asia-northeast1:overload-party-db` |
-| `DB_HOST` | PostgreSQL ホスト（ローカル開発用） | `localhost` |
-| `DB_USER` | PostgreSQL ユーザー | `analytics-reader` |
-| `DB_PASSWORD` | PostgreSQL パスワード | (Secret Manager 経由) |
-| `DB_NAME` | データベース名 | `overload_party` |
+| `DATABASE_CONN` | PostgreSQL 接続文字列（libpq キーワード形式） | `user=export-function-dev@overload-party-dev.iam dbname=overload_party sslmode=disable` |
+| `DATABASE_IAM_AUTH_ENABLED` | IAM データベース認証の使用可否（`true` / `false`） | `true` |
+| `CLOUDSQL_CONNECTION_NAME` | Cloud SQL インスタンス接続名（IAM 認証時のみ必須） | `overload-party-dev:asia-northeast1:overload-party-db` |
 | `BQ_PROJECT_ID` | BigQuery プロジェクト ID | `overload-party-dev` |
 | `BQ_DATASET_ID` | BigQuery データセット ID | `analytics` |
 | `GCS_BUCKET` | ステージング用 GCS バケット | `overload-party-dev-bq-staging` |
@@ -94,14 +94,12 @@ git push origin main
 ```bash
 cd export-function
 
-# Cloud SQL Auth Proxy 起動（別ターミナル）
-cloud-sql-proxy overload-party-dev:asia-northeast1:overload-party-db --port=5432
+# Cloud SQL Auth Proxy 起動（別ターミナル）。proxy が IAM 認証を代行する
+cloud-sql-proxy overload-party-dev:asia-northeast1:overload-party-db --port=5432 --auto-iam-authn
 
-# 環境変数設定
-export DB_HOST="localhost"
-export DB_USER="analytics-reader"
-export DB_PASSWORD="..."
-export DB_NAME="overload_party"
+# 環境変数設定。IAM 認証を proxy に任せるため DATABASE_IAM_AUTH_ENABLED は false
+export DATABASE_CONN="host=localhost port=5432 dbname=overload_party user=<自分の Google アカウント> sslmode=disable"
+export DATABASE_IAM_AUTH_ENABLED="false"
 export BQ_PROJECT_ID="overload-party-dev"
 export BQ_DATASET_ID="analytics"
 export GCS_BUCKET="overload-party-dev-bq-staging"
@@ -117,32 +115,37 @@ curl -X POST http://localhost:8080 \
 
 ## エクスポート対象テーブル
 
-| テーブル | 用途 | 更新頻度 |
-|---------|------|---------|
-| games | ゲーム結果、勝率分析、勝利条件分布 | Daily |
-| game_events | カード使用率、行動分析 | Hourly |
-| players | DAU、ファクション選択傾向 | Daily |
-| card_definitions | カードマスタ（メタ分析の JOIN 用） | Daily |
-| deck_cards | デッキ構成分析、カード採用率 | Daily |
-| matches | ゲーム履歴 | Daily |
-| subscriptions | MRR、チャーン率 | Daily |
-| purchases | ARPU、購入頻度 (source: one_time_purchases) | Daily |
+| テーブル | 取得元 | 用途 | 更新頻度 |
+|---------|--------|------|---------|
+| games | `battle.games` | ゲーム結果、勝敗理由の分布 | Daily |
+| game_events | `battle.game_events` | カード使用率、行動分析 | Hourly |
+| game_players | `gateway.game_players` | プレイヤーとゲームスロットの対応（勝率分析の起点） | Daily |
+| players | `account.players` | DAU、オンボーディング進行、課金状態 | Daily |
+| card_definitions | `card.card_definitions` | カードマスタ（メタ分析の JOIN 用） | Daily |
+| deck_cards | `card.deck_cards` | デッキ構成分析、カード採用率 | Daily |
+| subscriptions | `shop.subscriptions` | MRR、チャーン率 | Daily |
+| purchases | `shop.one_time_purchases` | ARPU、購入頻度 | Daily |
 
 append-only テーブルの最新状態は `*_latest` VIEW で取得する。
+
+`battle.games` はスロット番号 (1/2) だけを持ちプレイヤー ID を知らないため、プレイヤー単位の集計は
+`game_players` を JOIN して行う。認証プロバイダの識別子 (`firebase_uid`) と課金トークンは
+分析に不要なためエクスポートしない。プレイヤーの同一性は `player_id` が担う。
 
 ## BigQuery 分析例
 
 ```sql
--- ファクション別勝率
+-- プレイヤー別勝率
 SELECT
-  JSON_EXTRACT_SCALAR(player1_deck_snapshot, '$.faction') AS faction,
+  gp.player_id,
   COUNT(*) AS total_games,
-  COUNTIF(winner_id = player1_id) AS wins,
-  ROUND(COUNTIF(winner_id = player1_id) / COUNT(*) * 100, 2) AS win_rate
-FROM `overload-party-dev.analytics.games_latest`
-WHERE status = 'finished'
-  AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-GROUP BY faction
+  COUNTIF(g.winning_player_num = gp.player_num) AS wins,
+  ROUND(COUNTIF(g.winning_player_num = gp.player_num) / COUNT(*) * 100, 2) AS win_rate
+FROM `overload-party-dev.analytics.game_players` gp
+JOIN `overload-party-dev.analytics.games_latest` g USING (game_id)
+WHERE g.status = 'finished'
+  AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
+GROUP BY gp.player_id
 ORDER BY win_rate DESC;
 
 -- カード使用率 (トップ 20)
@@ -157,19 +160,14 @@ GROUP BY card_id
 ORDER BY play_count DESC
 LIMIT 20;
 
--- 勝利条件の分布
+-- 決着理由の分布
 SELECT
-  JSON_EXTRACT_SCALAR(
-    (SELECT event_data FROM `overload-party-dev.analytics.game_events` ge
-     WHERE ge.game_id = g.game_id AND ge.event_type = 'game_end'
-     LIMIT 1),
-    '$.winCondition'
-  ) AS win_condition,
+  win_reason,
   COUNT(*) AS count
-FROM `overload-party-dev.analytics.games_latest` g
+FROM `overload-party-dev.analytics.games_latest`
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY win_condition
+GROUP BY win_reason
 ORDER BY count DESC;
 ```
 

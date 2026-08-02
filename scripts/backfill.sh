@@ -31,7 +31,7 @@ if [ -z "$FUNCTION_URL" ]; then
 fi
 
 # Define all tables
-ALL_TABLES=("games" "game_events" "players" "matches" "card_definitions" "deck_cards" "subscriptions" "purchases")
+ALL_TABLES=("games" "game_events" "game_players" "players" "card_definitions" "deck_cards" "subscriptions" "purchases")
 
 # Determine which tables to backfill
 if [ "$TABLE" == "all" ]; then

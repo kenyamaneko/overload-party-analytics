@@ -8,7 +8,7 @@
 - [x] バックフィルスクリプト作成
 - [x] ドキュメント作成
 - [x] CI/CD パイプライン (GitHub Actions)
-- [x] 全テーブル対応 (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases)
+- [x] 全テーブル対応 (games, game_events, game_players, players, card_definitions, deck_cards, subscriptions, purchases)
 - [x] Dedup VIEW (games_latest, subscriptions_latest, players_latest, card_definitions_latest)
 
 ### 次のステップ
@@ -31,7 +31,7 @@ terraform apply
 
 確認項目:
 - [ ] BigQuery dataset `analytics` が作成された
-- [ ] 全テーブル (games, game_events, players, matches, card_definitions, deck_cards, subscriptions, purchases) が作成された
+- [ ] 全テーブル (games, game_events, game_players, players, card_definitions, deck_cards, subscriptions, purchases) が作成された
 - [ ] VIEW (games_latest, subscriptions_latest, players_latest, card_definitions_latest) が作成された
 - [ ] GCS バケット (bq-staging) が作成された
 - [ ] Service Account が作成された

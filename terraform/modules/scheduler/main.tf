@@ -55,8 +55,8 @@ resource "google_cloud_scheduler_job" "export_daily" {
     body = base64encode(jsonencode({
       tables = [
         "games",
+        "game_players",
         "players",
-        "matches",
         "subscriptions",
         "purchases",
         "card_definitions",

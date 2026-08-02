@@ -46,28 +46,46 @@ func newCloudLoggingHandler() slog.Handler {
 	})
 }
 
+// applyEnvConfig は環境変数から実行時設定を読み込みます。
+// 未設定・解釈できない値は起動時に失敗させ、既定値へのフォールバックは行いません。
+func applyEnvConfig(config *model.Config) error {
+	config.DatabaseConn = os.Getenv("DATABASE_CONN")
+	config.BQProjectID = os.Getenv("BQ_PROJECT_ID")
+	config.BQDatasetID = os.Getenv("BQ_DATASET_ID")
+	config.GCSBucket = os.Getenv("GCS_BUCKET")
+
+	if config.DatabaseConn == "" || config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
+		return fmt.Errorf("missing required environment variables (DATABASE_CONN, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")
+	}
+
+	rawIAMAuth := os.Getenv("DATABASE_IAM_AUTH_ENABLED")
+	switch rawIAMAuth {
+	case "true":
+		config.DatabaseIAMAuthEnabled = true
+	case "false":
+		config.DatabaseIAMAuthEnabled = false
+	default:
+		return fmt.Errorf("DATABASE_IAM_AUTH_ENABLED must be %q or %q, got %q", "true", "false", rawIAMAuth)
+	}
+
+	if config.DatabaseIAMAuthEnabled {
+		config.CloudSQLConnectionName = os.Getenv("CLOUDSQL_CONNECTION_NAME")
+		if config.CloudSQLConnectionName == "" {
+			return fmt.Errorf("CLOUDSQL_CONNECTION_NAME is required when DATABASE_IAM_AUTH_ENABLED is true")
+		}
+	}
+
+	return nil
+}
+
 func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
 	config, err := model.LoadConfig("config.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	config.InstanceConnectionName = os.Getenv("INSTANCE_CONNECTION_NAME")
-	config.DBHost = os.Getenv("DB_HOST")
-	config.DBUser = os.Getenv("DB_USER")
-	config.DBPassword = os.Getenv("DB_PASSWORD")
-	config.DBName = os.Getenv("DB_NAME")
-	config.BQProjectID = os.Getenv("BQ_PROJECT_ID")
-	config.BQDatasetID = os.Getenv("BQ_DATASET_ID")
-	config.GCSBucket = os.Getenv("GCS_BUCKET")
-
-	if config.DBUser == "" || config.DBPassword == "" || config.DBName == "" ||
-		config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
-		return nil, fmt.Errorf("missing required environment variables (DB_USER, DB_PASSWORD, DB_NAME, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")
-	}
-
-	if config.InstanceConnectionName == "" && config.DBHost == "" {
-		return nil, fmt.Errorf("missing database endpoint: set either INSTANCE_CONNECTION_NAME or DB_HOST")
+	if err := applyEnvConfig(config); err != nil {
+		return nil, err
 	}
 
 	source, err := adapter.NewPostgresReader(ctx, config)
