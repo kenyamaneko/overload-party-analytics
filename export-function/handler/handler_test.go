@@ -145,7 +145,7 @@ func TestHandler(t *testing.T) {
 			require.Equal(t, int64(42), resp.Results[0].RowsExported)
 		})
 
-		t.Run("一部失敗のとき、206 を返しエラー内容を含む", func(t *testing.T) {
+		t.Run("2 テーブルのうち 1 テーブルが失敗したとき、500 を返し失敗したテーブルのエラー内容が結果に残る", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:        "games",
@@ -166,18 +166,40 @@ func TestHandler(t *testing.T) {
 
 			h(w, r)
 
-			require.Equal(t, http.StatusPartialContent, w.Code)
+			require.Equal(t, http.StatusInternalServerError, w.Code)
 
 			var resp ExportResponse
 			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
 			require.False(t, resp.IsSuccess)
-			require.NotEmpty(t, resp.Results[1].Error)
+			require.Contains(t, resp.Message, "Some exports failed")
+			require.Contains(t, resp.Results[1].Error, "connection refused")
 		})
 
-		t.Run("checkpoint 書き込み失敗のとき、500 を返す", func(t *testing.T) {
-			// BQ ロード成功後の checkpoint 書き込み失敗を汎用 206 partial-content に
-			// 含めてはならない。500 を返すことで Cloud Scheduler のリトライ / アラートが
-			// 発火し、operator が MERGE dedup の冪等性を活かして再実行できる。
+		t.Run("全テーブルが失敗したとき、500 を返す", func(t *testing.T) {
+			results := []model.ExportResult{
+				{
+					Table:     "games",
+					IsSuccess: false,
+					Error:     "query source: connection refused",
+				},
+			}
+
+			h := New(newMockFactory(results))
+			body := `{"tables": ["games"], "mode": "incremental"}`
+			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+			w := httptest.NewRecorder()
+
+			h(w, r)
+
+			require.Equal(t, http.StatusInternalServerError, w.Code)
+
+			var resp ExportResponse
+			require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+			require.False(t, resp.IsSuccess)
+			require.Contains(t, resp.Message, "Some exports failed")
+		})
+
+		t.Run("checkpoint 書き込み失敗のとき、500 を返し checkpoint の失敗が示される", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:              "games",
@@ -203,7 +225,7 @@ func TestHandler(t *testing.T) {
 			require.Contains(t, resp.Message, "Checkpoint")
 		})
 
-		t.Run("checkpoint 書き込み失敗のテーブルと通常の失敗のテーブルが混在するとき、206 ではなく 500 を返す", func(t *testing.T) {
+		t.Run("checkpoint 書き込み失敗のテーブルと通常の失敗のテーブルが混在するとき、500 を返し checkpoint の失敗が示される", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:              "games",

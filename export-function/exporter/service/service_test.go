@@ -67,22 +67,27 @@ func (s *stubStaging) Close() error { return nil }
 type warehouseLoad struct {
 	table   string
 	gcsPath string
-	mode    model.DedupMode
 }
 
 type stubWarehouse struct {
-	loadErr error
-	loaded  []warehouseLoad
+	loadErr    error
+	loaded     []warehouseLoad
+	loadedRows int64
 }
 
-func (s *stubWarehouse) Load(_ context.Context, tableConfig model.TableConfig, gcsPath string, mode model.DedupMode) error {
-	s.loaded = append(s.loaded, warehouseLoad{table: tableConfig.BigQueryTable, gcsPath: gcsPath, mode: mode})
+func (s *stubWarehouse) Load(_ context.Context, tableConfig model.TableConfig, gcsPath string) (int64, error) {
+	s.loaded = append(s.loaded, warehouseLoad{table: tableConfig.BigQueryTable, gcsPath: gcsPath})
 	if s.loadErr != nil {
-		return s.loadErr
+		return 0, s.loadErr
 	}
-	return nil
+	return s.loadedRows, nil
 }
 func (s *stubWarehouse) Close() error { return nil }
+
+// newStubWarehouse は読み出し件数どおりに取り込んだと報告するスタブを返します。
+func newStubWarehouse(loadedRows int64) *stubWarehouse {
+	return &stubWarehouse{loadedRows: loadedRows}
+}
 
 type stubCheckpoint struct {
 	stored       *model.Checkpoint
@@ -130,7 +135,6 @@ func newTestConfig() *model.Config {
 				NaturalKey:    []string{"tst_id"},
 			},
 		},
-		DedupMode: model.DedupModeMerge,
 	}
 }
 
@@ -147,7 +151,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -160,7 +164,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -177,7 +181,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -194,7 +198,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: []map[string]interface{}{}}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(0)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -338,7 +342,7 @@ func TestExport(t *testing.T) {
 				cfg := newTestConfig()
 				src := &stubSource{rows: tt.rows, err: tt.sourceErr}
 				stg := &stubStaging{writeErr: tt.stagingWriteErr}
-				wh := &stubWarehouse{loadErr: tt.warehouseLoadErr}
+				wh := &stubWarehouse{loadErr: tt.warehouseLoadErr, loadedRows: int64(len(tt.rows))}
 				cp := &stubCheckpoint{getErr: tt.checkpointGetErr, updateErr: tt.checkpointUpdateErr}
 
 				svc := New(cfg, src, stg, wh, cp)
@@ -392,7 +396,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{deleteErr: errors.New("dummy delete error")}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -405,49 +409,11 @@ func TestExport(t *testing.T) {
 			require.Equal(t, int64(1), cp.stored.LastRowCount)
 		})
 
-		dedupModeCases := []struct {
-			name      string
-			dedupMode model.DedupMode
-			wantMode  model.DedupMode
-		}{
-			{
-				name:      "重複排除モードが未設定のとき、mergeとしてロードされる",
-				dedupMode: "",
-				wantMode:  model.DedupModeMerge,
-			},
-			{
-				name:      "重複排除モードがappendのとき、appendとしてロードされる",
-				dedupMode: model.DedupModeAppend,
-				wantMode:  model.DedupModeAppend,
-			},
-			{
-				name:      "重複排除モードがmergeのとき、mergeとしてロードされる",
-				dedupMode: model.DedupModeMerge,
-				wantMode:  model.DedupModeMerge,
-			},
-		}
-		for _, tt := range dedupModeCases {
-			t.Run(tt.name, func(t *testing.T) {
-				cfg := newTestConfig()
-				cfg.DedupMode = tt.dedupMode
-				src := &stubSource{rows: singleRow}
-				stg := &stubStaging{}
-				wh := &stubWarehouse{}
-				cp := &stubCheckpoint{}
-
-				svc := New(cfg, src, stg, wh, cp)
-				svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
-
-				require.Len(t, wh.loaded, 1)
-				require.Equal(t, tt.wantMode, wh.loaded[0].mode)
-			})
-		}
-
 		t.Run("1行エクスポートしたとき、結果の行数は1になりファイルパスはステージングの書き込み先になる", func(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -462,7 +428,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: threeRows}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(3)
 			cp := &stubCheckpoint{}
 
 			before := time.Now()
@@ -483,7 +449,7 @@ func TestExport(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{stored: &model.Checkpoint{Table: "tst_table_a", LastExportTime: seededExportTime}}
 
 			svc := New(cfg, src, stg, wh, cp)
@@ -496,11 +462,84 @@ func TestExport(t *testing.T) {
 			require.True(t, stored.LastExportTime.Equal(seededExportTime))
 		})
 
+		rowCountMismatchCases := []struct {
+			name       string
+			rows       []map[string]interface{}
+			loadedRows int64
+		}{
+			{
+				name:       "3行読み出したのにウェアハウスの取り込みが2行のとき、失敗になる",
+				rows:       threeRows,
+				loadedRows: 2,
+			},
+			{
+				name:       "3行読み出したのにウェアハウスの取り込みが0行のとき、失敗になる",
+				rows:       threeRows,
+				loadedRows: 0,
+			},
+			{
+				name:       "3行読み出したのにウェアハウスの取り込みが4行のとき、失敗になる",
+				rows:       threeRows,
+				loadedRows: 4,
+			},
+		}
+		for _, tt := range rowCountMismatchCases {
+			t.Run(tt.name, func(t *testing.T) {
+				cfg := newTestConfig()
+				src := &stubSource{rows: tt.rows}
+				stg := &stubStaging{}
+				wh := newStubWarehouse(tt.loadedRows)
+				cp := &stubCheckpoint{}
+
+				svc := New(cfg, src, stg, wh, cp)
+				results := svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
+
+				require.Len(t, results, 1)
+				require.False(t, results[0].IsSuccess)
+				require.Contains(t, results[0].Error, "does not match rows read from source")
+				require.Contains(t, results[0].Error, "tst_table_a")
+			})
+		}
+
+		t.Run("読み出し件数とウェアハウスの取り込み件数が食い違うとき、checkpointは更新されずステージングも削除されない", func(t *testing.T) {
+			cfg := newTestConfig()
+			src := &stubSource{rows: threeRows}
+			stg := &stubStaging{}
+			wh := newStubWarehouse(2)
+			cp := &stubCheckpoint{}
+
+			svc := New(cfg, src, stg, wh, cp)
+			results := svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
+
+			require.Len(t, results, 1)
+			require.False(t, results[0].IsSuccess)
+			require.Empty(t, cp.updates)
+			require.Nil(t, cp.stored)
+			require.Empty(t, stg.deleted)
+		})
+
+		t.Run("読み出し件数とウェアハウスの取り込み件数が一致するとき、成功になりcheckpointに読み出し件数が保存される", func(t *testing.T) {
+			cfg := newTestConfig()
+			src := &stubSource{rows: threeRows}
+			stg := &stubStaging{}
+			wh := newStubWarehouse(3)
+			cp := &stubCheckpoint{}
+
+			svc := New(cfg, src, stg, wh, cp)
+			results := svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
+
+			require.Len(t, results, 1)
+			require.True(t, results[0].IsSuccess)
+			require.Equal(t, int64(3), results[0].RowsExported)
+			require.NotNil(t, cp.stored)
+			require.Equal(t, int64(3), cp.stored.LastRowCount)
+		})
+
 		t.Run("エクスポート成功後、ステージングファイルが削除される", func(t *testing.T) {
 			cfg := newTestConfig()
 			src := &stubSource{rows: singleRow}
 			stg := &stubStaging{}
-			wh := &stubWarehouse{}
+			wh := newStubWarehouse(1)
 			cp := &stubCheckpoint{}
 
 			svc := New(cfg, src, stg, wh, cp)

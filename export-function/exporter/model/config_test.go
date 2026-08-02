@@ -25,10 +25,12 @@ tables:
   games:
     source_table: games
     bigquery_table: games
+    natural_key: [game_id]
     query: "SELECT * FROM games WHERE created_at >= $1 AND created_at < $2"
   players:
     source_table: players
     bigquery_table: players
+    natural_key: [player_id]
     query: "SELECT * FROM players WHERE updated_at >= $1 AND updated_at < $2"
 `)
 
@@ -76,6 +78,17 @@ tables:
     bigquery_table: games
 `,
 				wantErrContains: "query is required",
+			},
+			{
+				name: "natural_key が無いとき、エラーになる",
+				yaml: `
+tables:
+  games:
+    source_table: games
+    bigquery_table: games
+    query: "SELECT 1"
+`,
+				wantErrContains: "natural_key is required",
 			},
 			{
 				name:            "tables が空のとき、エラーになる",
@@ -156,6 +169,7 @@ tables:
   tst_games:
     source_table: tst_games
     bigquery_table: _tst_games
+    natural_key: [tst_id]
     query: "SELECT 1"
 `)
 

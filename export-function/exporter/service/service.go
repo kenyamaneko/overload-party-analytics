@@ -14,6 +14,9 @@ import (
 // 呼び出し元は HTTP 500 にエスカレーションする必要があります。
 var ErrCheckpointUpdate = errors.New("checkpoint update failed after warehouse load")
 
+// ErrRowCountMismatch はソースからの読み出し件数とウェアハウスへの取り込み件数の不一致を示します。
+var ErrRowCountMismatch = errors.New("warehouse row count does not match rows read from source")
+
 // Service はエクスポート処理のインターフェースです。
 type Service interface {
 	Export(ctx context.Context, tables []string, mode string, startDate, endDate string) []model.ExportResult
@@ -110,14 +113,17 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 
 	slog.Info("staged", "staging_uri", stagingURI)
 
-	dedupMode := e.resolveDedupMode(mode)
-	if err := e.warehouse.Load(ctx, tableConfig, stagingURI, dedupMode); err != nil {
+	loadedRows, err := e.warehouse.Load(ctx, tableConfig, stagingURI)
+	if err != nil {
 		return 0, stagingURI, fmt.Errorf("load to warehouse: %w", err)
 	}
 
-	slog.Info("loaded into warehouse", "warehouse_table", tableConfig.BigQueryTable, "dedup", dedupMode)
+	slog.Info("loaded into warehouse", "warehouse_table", tableConfig.BigQueryTable, "loaded_rows", loadedRows)
 
 	rowCount := int64(len(rows))
+	if loadedRows != rowCount {
+		return 0, stagingURI, fmt.Errorf("%w: table=%s: read %d rows, warehouse reported %d", ErrRowCountMismatch, table, rowCount, loadedRows)
+	}
 
 	// full mode (backfill) では checkpoint を上書きしない。
 	// checkpoint 更新失敗は BQ ロード済みのためハードエラーとして扱う。
@@ -138,14 +144,6 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 	}
 
 	return rowCount, stagingURI, nil
-}
-
-// resolveDedupMode は設定に基づいて dedup モードを決定します。
-func (e *exporter) resolveDedupMode(mode string) model.DedupMode {
-	if e.config.DedupMode != "" {
-		return e.config.DedupMode
-	}
-	return model.DedupModeMerge
 }
 
 // resolveTimeRange はモードとパラメータからクエリ時間範囲を決定します。

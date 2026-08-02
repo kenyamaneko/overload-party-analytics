@@ -87,15 +87,14 @@ func New(newExporter func(ctx context.Context) (service.Service, error)) http.Ha
 			IsSuccess: isSuccess,
 		}
 
-		// checkpoint 書き込み失敗 → 500（BQ ロード済みのため operator に通知必須）
-		// その他の部分失敗 → 206
+		// 呼び出し元のスケジューラは 2xx を成功とみなし再試行しないため、テーブル単位の失敗も 5xx で返す
 		status := http.StatusOK
 		switch {
 		case hasCheckpointFailed:
 			status = http.StatusInternalServerError
-			response.Message = "Checkpoint write failed after warehouse load; re-run requires MERGE dedup to stay idempotent"
+			response.Message = "Checkpoint write failed after warehouse load; retry re-loads the same range"
 		case !isSuccess:
-			status = http.StatusPartialContent
+			status = http.StatusInternalServerError
 			response.Message = "Some exports failed, check results for details"
 		default:
 			response.Message = fmt.Sprintf("Successfully exported %d tables", len(results))
