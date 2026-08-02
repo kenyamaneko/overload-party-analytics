@@ -24,7 +24,7 @@ type StagingWriter interface {
 // WarehouseLoader はステージングデータをデータウェアハウスにロードします。
 type WarehouseLoader interface {
 	// Load はロードを行い、ウェアハウスに取り込まれた行数を返します。
-	Load(ctx context.Context, tableConfig model.TableConfig, stagingURI string, dedupMode model.DedupMode) (int64, error)
+	Load(ctx context.Context, tableConfig model.TableConfig, stagingURI string) (int64, error)
 	Close() error
 }
 

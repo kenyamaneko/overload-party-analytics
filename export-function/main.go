@@ -61,17 +61,6 @@ func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
 	config.BQDatasetID = os.Getenv("BQ_DATASET_ID")
 	config.GCSBucket = os.Getenv("GCS_BUCKET")
 
-	// DEDUP_MODE: デフォルト "merge" で incremental run を冪等にする。
-	// 空 dataset への backfill 時は DEDUP_MODE=append で MERGE をスキップ可能。
-	switch mode := os.Getenv("DEDUP_MODE"); mode {
-	case "", string(model.DedupModeMerge):
-		config.DedupMode = model.DedupModeMerge
-	case string(model.DedupModeAppend):
-		config.DedupMode = model.DedupModeAppend
-	default:
-		return nil, fmt.Errorf("invalid DEDUP_MODE %q (want merge or append)", mode)
-	}
-
 	if config.DBUser == "" || config.DBPassword == "" || config.DBName == "" ||
 		config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
 		return nil, fmt.Errorf("missing required environment variables (DB_USER, DB_PASSWORD, DB_NAME, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")

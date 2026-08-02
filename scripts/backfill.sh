@@ -18,9 +18,8 @@ command -v gcloud >/dev/null 2>&1 || { echo "ERROR: gcloud not found in PATH" >&
 command -v curl >/dev/null 2>&1 || { echo "ERROR: curl not found in PATH" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "ERROR: jq not found in PATH (required to parse function response)" >&2; exit 1; }
 
-# Resolve the Gen2 Cloud Function HTTPS URL once; calling via curl lets us
-# inspect both the HTTP status code and the JSON body (which is what the
-# export handler uses to signal checkpoint-level failures).
+# Resolve the Gen2 Cloud Function HTTPS URL once; calling via curl lets us read
+# the HTTP status code, which is how the export handler signals failure.
 FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
   --region "$REGION" \
   --gen2 \
@@ -76,30 +75,10 @@ call_function() {
   body=$(cat "$tmpfile")
   rm -f "$tmpfile"
 
-  if [ "$http_code" != "200" ] && [ "$http_code" != "206" ]; then
+  # The handler answers 200 only when every requested table succeeded.
+  if [ "$http_code" != "200" ]; then
     echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] http=${http_code}" >&2
     echo "    response: ${body}" >&2
-    return 1
-  fi
-
-  # 206 = partial content; the handler returns this when at least one table
-  # failed but none triggered a checkpoint-level escalation. Treat any
-  # non-200 body as a failure for a backfill run.
-  if [ "$http_code" = "206" ]; then
-    echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] http=206 (partial success)" >&2
-    echo "    response: ${body}" >&2
-    return 1
-  fi
-
-  # HTTP 200: still inspect the JSON body for per-table failures and any
-  # top-level errors array a future handler might emit.
-  local errs
-  errs=$(printf '%s' "$body" | jq -r '[.results[]? | select(.success == false) | .error] + (.errors // []) | .[]' 2>/dev/null || true)
-  if [ -n "$errs" ]; then
-    echo "  FAIL ${tbl} [${chunk_start} → ${chunk_end}] errors in response body:" >&2
-    while IFS= read -r line; do
-      [ -n "$line" ] && echo "    - ${line}" >&2
-    done <<< "$errs"
     return 1
   fi
 

@@ -41,6 +41,10 @@ func LoadConfig(path string) (*Config, error) {
 		if table.Query == "" {
 			return nil, fmt.Errorf("table %s: query is required", name)
 		}
+		// 再実行を冪等にする MERGE のキーになるため、natural_key を必須にする
+		if len(table.NaturalKey) == 0 {
+			return nil, fmt.Errorf("table %s: natural_key is required", name)
+		}
 		for _, col := range table.NaturalKey {
 			if !safeIdentifier.MatchString(col) {
 				return nil, fmt.Errorf("table %s: natural_key column %q is not a valid identifier", name, col)

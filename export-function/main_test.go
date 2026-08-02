@@ -18,21 +18,10 @@ func setValidExporterEnv(t *testing.T) {
 	t.Setenv("BQ_PROJECT_ID", "tst-project")
 	t.Setenv("BQ_DATASET_ID", "tst-dataset")
 	t.Setenv("GCS_BUCKET", "tst-bucket")
-	t.Setenv("DEDUP_MODE", "merge")
 }
 
 func TestNewExporterService(t *testing.T) {
 	t.Run("エクスポートサービスの初期化", func(t *testing.T) {
-		t.Run("DEDUP_MODEが未対応値のとき、初期化はエラーになり該当値が示される", func(t *testing.T) {
-			setValidExporterEnv(t)
-			t.Setenv("DEDUP_MODE", "both")
-
-			_, err := newExporterService(context.Background())
-			require.Error(t, err)
-			require.Contains(t, err.Error(), "invalid DEDUP_MODE")
-			require.Contains(t, err.Error(), "both")
-		})
-
 		missingRequiredCases := []string{
 			"DB_USER",
 			"DB_PASSWORD",

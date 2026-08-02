@@ -67,18 +67,16 @@ func (s *stubStaging) Close() error { return nil }
 type warehouseLoad struct {
 	table   string
 	gcsPath string
-	mode    model.DedupMode
 }
 
 type stubWarehouse struct {
-	loadErr error
-	loaded  []warehouseLoad
-	// loadedRows は取り込み件数として返す値。負値のときは読み出し件数をそのまま返す。
+	loadErr    error
+	loaded     []warehouseLoad
 	loadedRows int64
 }
 
-func (s *stubWarehouse) Load(_ context.Context, tableConfig model.TableConfig, gcsPath string, mode model.DedupMode) (int64, error) {
-	s.loaded = append(s.loaded, warehouseLoad{table: tableConfig.BigQueryTable, gcsPath: gcsPath, mode: mode})
+func (s *stubWarehouse) Load(_ context.Context, tableConfig model.TableConfig, gcsPath string) (int64, error) {
+	s.loaded = append(s.loaded, warehouseLoad{table: tableConfig.BigQueryTable, gcsPath: gcsPath})
 	if s.loadErr != nil {
 		return 0, s.loadErr
 	}
@@ -137,7 +135,6 @@ func newTestConfig() *model.Config {
 				NaturalKey:    []string{"tst_id"},
 			},
 		},
-		DedupMode: model.DedupModeMerge,
 	}
 }
 
@@ -411,39 +408,6 @@ func TestExport(t *testing.T) {
 			require.NotNil(t, cp.stored)
 			require.Equal(t, int64(1), cp.stored.LastRowCount)
 		})
-
-		dedupModeCases := []struct {
-			name      string
-			dedupMode model.DedupMode
-			wantMode  model.DedupMode
-		}{
-			{
-				name:      "重複排除モードがappendのとき、appendとしてロードされる",
-				dedupMode: model.DedupModeAppend,
-				wantMode:  model.DedupModeAppend,
-			},
-			{
-				name:      "重複排除モードがmergeのとき、mergeとしてロードされる",
-				dedupMode: model.DedupModeMerge,
-				wantMode:  model.DedupModeMerge,
-			},
-		}
-		for _, tt := range dedupModeCases {
-			t.Run(tt.name, func(t *testing.T) {
-				cfg := newTestConfig()
-				cfg.DedupMode = tt.dedupMode
-				src := &stubSource{rows: singleRow}
-				stg := &stubStaging{}
-				wh := newStubWarehouse(1)
-				cp := &stubCheckpoint{}
-
-				svc := New(cfg, src, stg, wh, cp)
-				svc.Export(context.Background(), []string{"tst_table_a"}, "incremental", "", "")
-
-				require.Len(t, wh.loaded, 1)
-				require.Equal(t, tt.wantMode, wh.loaded[0].mode)
-			})
-		}
 
 		t.Run("1行エクスポートしたとき、結果の行数は1になりファイルパスはステージングの書き込み先になる", func(t *testing.T) {
 			cfg := newTestConfig()

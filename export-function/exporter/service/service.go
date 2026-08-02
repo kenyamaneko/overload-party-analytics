@@ -113,13 +113,12 @@ func (e *exporter) exportTable(ctx context.Context, table string, mode string, s
 
 	slog.Info("staged", "staging_uri", stagingURI)
 
-	dedupMode := e.config.DedupMode
-	loadedRows, err := e.warehouse.Load(ctx, tableConfig, stagingURI, dedupMode)
+	loadedRows, err := e.warehouse.Load(ctx, tableConfig, stagingURI)
 	if err != nil {
 		return 0, stagingURI, fmt.Errorf("load to warehouse: %w", err)
 	}
 
-	slog.Info("loaded into warehouse", "warehouse_table", tableConfig.BigQueryTable, "dedup", dedupMode, "loaded_rows", loadedRows)
+	slog.Info("loaded into warehouse", "warehouse_table", tableConfig.BigQueryTable, "loaded_rows", loadedRows)
 
 	rowCount := int64(len(rows))
 	if loadedRows != rowCount {

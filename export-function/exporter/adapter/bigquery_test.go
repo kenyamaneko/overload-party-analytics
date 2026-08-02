@@ -87,23 +87,35 @@ func TestLoad(t *testing.T) {
 	t.Run("BigQuery へのロード", func(t *testing.T) {
 		t.Run("ロード先テーブル名にセミコロンを含むとき、ロードはエラーになる", func(t *testing.T) {
 			l := &BQLoader{}
-			tableConfig := model.TableConfig{BigQueryTable: "tst_games; DROP"}
+			tableConfig := model.TableConfig{
+				BigQueryTable: "tst_games; DROP",
+				NaturalKey:    []string{"tst_id"},
+			}
 
-			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeAppend)
+			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl")
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "not a valid identifier")
 		})
 
-		t.Run("merge ロードで natural_key のカラム名に空白を含むとき、ロードはエラーになる", func(t *testing.T) {
+		t.Run("natural_key のカラム名に空白を含むとき、ロードはエラーになる", func(t *testing.T) {
 			l := &BQLoader{}
 			tableConfig := model.TableConfig{
 				BigQueryTable: "tst_games",
 				NaturalKey:    []string{"tst id"},
 			}
 
-			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeMerge)
+			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl")
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "tst id")
+		})
+
+		t.Run("natural_key が空のとき、ロードはエラーになり突き合わせるキーが無いことが示される", func(t *testing.T) {
+			l := &BQLoader{}
+			tableConfig := model.TableConfig{BigQueryTable: "tst_games"}
+
+			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "no natural_key")
 		})
 	})
 }

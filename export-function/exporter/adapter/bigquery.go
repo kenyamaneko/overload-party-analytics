@@ -40,16 +40,14 @@ func NewBQLoader(ctx context.Context, projectID, datasetID string) (*BQLoader, e
 	return &BQLoader{client: client, datasetID: datasetID}, nil
 }
 
-// Load は GCS パスからデータを BigQuery テーブルにロードし、取り込まれた行数を返します。
-// dedupMode == merge かつ NaturalKey 設定時はステージング + MERGE で冪等性を保証します。
-func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsPath string, dedupMode model.DedupMode) (int64, error) {
+// Load は GCS パスからデータをステージング経由で BigQuery テーブルに MERGE し、取り込まれた行数を返します。
+func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsPath string) (int64, error) {
 	if !bqSafeIdentifier.MatchString(tableConfig.BigQueryTable) {
 		return 0, fmt.Errorf("bigquery_table %q is not a valid identifier", tableConfig.BigQueryTable)
 	}
 
-	shouldMerge := dedupMode == model.DedupModeMerge && len(tableConfig.NaturalKey) > 0
-	if !shouldMerge {
-		return l.appendLoad(ctx, tableConfig.BigQueryTable, gcsPath)
+	if len(tableConfig.NaturalKey) == 0 {
+		return 0, fmt.Errorf("table %s has no natural_key to merge on", tableConfig.BigQueryTable)
 	}
 
 	for _, col := range tableConfig.NaturalKey {
@@ -59,40 +57,6 @@ func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsP
 	}
 
 	return l.mergeLoad(ctx, tableConfig, gcsPath)
-}
-
-// appendLoad は GCS からテーブルへ WriteAppend でロードし、取り込まれた行数を返します。
-func (l *BQLoader) appendLoad(ctx context.Context, tableName, gcsPath string) (int64, error) {
-	table := l.client.Dataset(l.datasetID).Table(tableName)
-
-	gcsRef := bigquery.NewGCSReference(gcsPath)
-	gcsRef.SourceFormat = bigquery.JSON
-	gcsRef.AutoDetect = false
-	gcsRef.MaxBadRecords = 0
-
-	loader := table.LoaderFrom(gcsRef)
-	loader.WriteDisposition = bigquery.WriteAppend
-
-	job, err := loader.Run(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("start load job: %w", err)
-	}
-
-	status, err := job.Wait(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("wait for job: %w", err)
-	}
-
-	if err := status.Err(); err != nil {
-		return 0, fmt.Errorf("load job failed: %w", err)
-	}
-
-	rowCount, err := loadedRowCount(status)
-	if err != nil {
-		return 0, fmt.Errorf("append load into %s: %w", tableName, err)
-	}
-
-	return rowCount, nil
 }
 
 // mergeLoad はステージングテーブル経由で MERGE ロードを行い、変更された行数を返します。
@@ -190,18 +154,6 @@ func dropTableIfExists(ctx context.Context, table *bigquery.Table) error {
 		return nil
 	}
 	return err
-}
-
-// loadedRowCount は完了したロードジョブが取り込んだ行数を返します。
-func loadedRowCount(status *bigquery.JobStatus) (int64, error) {
-	if status.Statistics == nil {
-		return 0, errors.New("load job reported no statistics")
-	}
-	stats, ok := status.Statistics.Details.(*bigquery.LoadStatistics)
-	if !ok {
-		return 0, fmt.Errorf("load job reported %T instead of load statistics", status.Statistics.Details)
-	}
-	return stats.OutputRows, nil
 }
 
 // mergedRowCount は完了した MERGE ジョブが変更した行数を返します。
