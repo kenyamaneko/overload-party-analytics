@@ -184,4 +184,4 @@ gcloud projects get-iam-policy overload-party-dev \
 - [README](README.md) - プロジェクト概要
 - [docs/schema.md](docs/schema.md) - BigQuery スキーマ
 - [docs/queries.md](docs/queries.md) - サンプルクエリ集
-- [メインゲームサーバー](../overload-party)
+- [battle](https://github.com/kenyamaneko/overload-party-battle) - 対戦の進行とエクスポート元データの生成
