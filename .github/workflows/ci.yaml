@@ -27,3 +27,23 @@ jobs:
       has-image-scan: false
       needs-private-modules: false
     secrets: inherit
+
+  # 結合テストは各サービスリポジトリの DDL を要求するが、本リポジトリには
+  # それらを取得する認証情報が無く CI で実行できない。実行されない間に
+  # 壊れたまま気づかない状態を避けるため、型検査だけを通す。
+  integration-typecheck:
+    name: Type-check integration tests
+    needs: ci
+    if: needs.ci.outputs.code-changed == 'true'
+    runs-on: ubicloud-standard-2
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: export-function/go.mod
+      - name: Type-check integration tests
+        working-directory: export-function
+        run: go vet -tags=integration ./...

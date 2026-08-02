@@ -176,7 +176,7 @@ NPC 戦では NPC 側の行が存在しません (NPC はプレイヤー ID を�
 
 ### deck_cards (append-only)
 
-プレイヤーのデッキ構成データ。デッキを編集するたびに新しい行が追加されます。最新状態は `deck_cards_latest` VIEW を使用。
+プレイヤーのデッキ構成データ。デッキを編集するたびに、その時点の構成全体が新しい世代として追加されます。最新状態は `deck_cards_latest` VIEW を使用。
 
 取得元: `card.deck_cards` (デッキ属性と更新日時は `card.decks` を JOIN して取得)
 
@@ -307,12 +307,16 @@ SELECT * EXCEPT(rn) FROM (
 
 ### deck_cards_latest
 
-deck_cards テーブルからデッキ内カードごとに最新の 1 行を返す VIEW。
+deck_cards テーブルからデッキごとに最新世代のカード構成をまとめて返す VIEW。
+
+デッキ編集は構成全体を書き直し、全行がそのデッキの単一の updated_at を持つため、カード単位で
+最新行を選ぶと編集で外したカードが残ります。デッキ単位で順位付けし、同順の行をすべて残すことで
+最後に保存された構成と一致します。
 
 ```sql
 SELECT * EXCEPT(rn) FROM (
-  SELECT *, ROW_NUMBER() OVER (
-    PARTITION BY player_id, deck_id, card_id, art_no ORDER BY updated_at DESC
+  SELECT *, RANK() OVER (
+    PARTITION BY player_id, deck_id ORDER BY updated_at DESC
   ) AS rn
   FROM analytics.deck_cards
 ) WHERE rn = 1

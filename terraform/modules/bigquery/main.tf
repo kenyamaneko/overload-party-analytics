@@ -321,7 +321,10 @@ resource "google_bigquery_table" "players_latest" {
   depends_on = [google_bigquery_table.players]
 }
 
-# Deck Cards Latest View (dedup: one row per deck card, most recent updated_at wins)
+# Deck Cards Latest View (dedup: the newest generation of each deck, kept as a whole)
+#
+# A deck edit rewrites the whole composition under the deck's single updated_at, so ranking
+# per card would keep the cards that the edit removed.
 resource "google_bigquery_table" "deck_cards_latest" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
@@ -330,8 +333,8 @@ resource "google_bigquery_table" "deck_cards_latest" {
   view {
     query          = <<-SQL
       SELECT * EXCEPT(rn) FROM (
-        SELECT *, ROW_NUMBER() OVER (
-          PARTITION BY player_id, deck_id, card_id, art_no ORDER BY updated_at DESC
+        SELECT *, RANK() OVER (
+          PARTITION BY player_id, deck_id ORDER BY updated_at DESC
         ) AS rn
         FROM `${var.project_id}.${var.dataset_id}.deck_cards`
       ) WHERE rn = 1

@@ -2,7 +2,6 @@ package adapter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -92,10 +91,8 @@ func convertPgValue(val interface{}) (interface{}, error) {
 	case [16]byte:
 		// BigQuery 側の列が STRING のため、pgx が返す uuid の生バイト列を文字列表現にする
 		return uuid.UUID(v).String(), nil
-	case []byte:
-		// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
-		return json.RawMessage(v), nil
-	case map[string]interface{}:
+	case map[string]interface{}, []interface{}:
+		// jsonb はオブジェクトと配列のどちらの形でも格納できるため、両方を JSON 値のまま通す
 		return v, nil
 	default:
 		return nil, fmt.Errorf("unsupported Postgres value type %T", v)

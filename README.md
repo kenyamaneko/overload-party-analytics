@@ -107,11 +107,24 @@ export GCS_BUCKET="overload-party-dev-bq-staging"
 # ローカル実行
 go run main.go
 
-# テスト (別ターミナル)
+# 動作確認 (別ターミナル)
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
   -d '{"tables": ["games"], "mode": "incremental"}'
 ```
+
+### 結合テスト
+
+各サービスリポジトリの `db/schema.sql` と card のマスタデータを PostgreSQL コンテナに投入し、
+エクスポート対象 8 テーブルを実際に読んで JSONL に変換できることを確かめる。Docker が要る。
+
+```bash
+cd export-function
+go test -tags=integration ./...
+```
+
+各サービスリポジトリが本リポジトリと同じ階層に無い場合は、それらが並ぶディレクトリを
+`OVERLOAD_PARTY_WORKSPACE_DIR` で指定する。
 
 ## エクスポート対象テーブル
 
