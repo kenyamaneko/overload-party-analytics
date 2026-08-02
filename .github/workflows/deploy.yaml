@@ -41,23 +41,5 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # Cloud Functions のランタイム識別子はメジャーとマイナーまでしか持たないため、
-      # go.mod がパッチまで指定していても切り落とす
-      - name: Detect Go runtime
-        id: gomod
-        run: |
-          GO_VERSION=$(grep '^go ' export-function/go.mod | awk '{print $2}' | cut -d. -f1,2)
-          RUNTIME="go$(echo ${GO_VERSION} | tr -d '.')"
-          echo "runtime=${RUNTIME}" >> "$GITHUB_OUTPUT"
-
       - name: Deploy Cloud Function
-        run: |
-          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
-            --gen2 \
-            --region ${{ env.REGION }} \
-            --project ${{ env.PROJECT }} \
-            --runtime ${{ steps.gomod.outputs.runtime }} \
-            --entry-point ExportPostgresToBigQuery \
-            --trigger-http \
-            --source export-function/ \
-            --quiet
+        run: .github/scripts/deploy/deploy-function.sh
