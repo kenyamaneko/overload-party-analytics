@@ -54,17 +54,11 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 
 		rowMap := make(map[string]interface{}, len(fieldDescs))
 		for i, fd := range fieldDescs {
-			val := values[i]
-			switch v := val.(type) {
-			case time.Time:
-				val = v.Format(time.RFC3339Nano)
-			case []byte:
-				// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
-				val = json.RawMessage(v)
-			case map[string]interface{}:
-				val = v
+			converted, err := convertPgValue(values[i])
+			if err != nil {
+				return nil, fmt.Errorf("column %s: %w", fd.Name, err)
 			}
-			rowMap[fd.Name] = val
+			rowMap[fd.Name] = converted
 		}
 		result = append(result, rowMap)
 	}
@@ -76,23 +70,42 @@ func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
 	return result, nil
 }
 
+// convertPgValue は Postgres の値を JSONL 出力に適した表現へ変換します。
+// 変換規則を持たない型は BigQuery 側の値が崩れるため、素通りさせずエラーにします。
+func convertPgValue(val interface{}) (interface{}, error) {
+	switch v := val.(type) {
+	case nil:
+		return nil, nil
+	case string, bool, int16, int32, int64, float32, float64:
+		return v, nil
+	case time.Time:
+		return v.Format(time.RFC3339Nano), nil
+	case []byte:
+		// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
+		return json.RawMessage(v), nil
+	case map[string]interface{}:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported Postgres value type %T", v)
+	}
+}
+
 func newPgPool(ctx context.Context, config *model.Config) (*pgxpool.Pool, error) {
 	var dsn string
 
-	if config.InstanceConnectionName != "" {
+	switch {
+	case config.InstanceConnectionName != "":
 		dsn = fmt.Sprintf(
 			"host=/cloudsql/%s user=%s password=%s dbname=%s sslmode=disable",
 			config.InstanceConnectionName, config.DBUser, config.DBPassword, config.DBName,
 		)
-	} else {
-		host := config.DBHost
-		if host == "" {
-			host = "localhost"
-		}
+	case config.DBHost != "":
 		dsn = fmt.Sprintf(
 			"host=%s user=%s password=%s dbname=%s sslmode=disable",
-			host, config.DBUser, config.DBPassword, config.DBName,
+			config.DBHost, config.DBUser, config.DBPassword, config.DBName,
 		)
+	default:
+		return nil, fmt.Errorf("either INSTANCE_CONNECTION_NAME or DB_HOST must be set")
 	}
 
 	poolConfig, err := pgxpool.ParseConfig(dsn)

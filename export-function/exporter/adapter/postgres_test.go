@@ -160,6 +160,54 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "tech", snapshot["faction"])
 		})
 
+		t.Run("小数・16bit整数・32bit整数のカラムのとき、値が保持される", func(t *testing.T) {
+			rows := newMockRows(
+				[]string{"ratio", "small", "medium"},
+				[][]any{{float64(1.5), int16(7), int32(1000)}},
+			)
+
+			result, err := pgRowsToMaps(rows)
+			require.NoError(t, err)
+
+			require.Equal(t, float64(1.5), result[0]["ratio"])
+			require.Equal(t, int16(7), result[0]["small"])
+			require.Equal(t, int32(1000), result[0]["medium"])
+		})
+
+		unsupportedTypeCases := []struct {
+			name     string
+			value    any
+			wantType string
+		}{
+			{
+				name:     "uuid のカラムのとき、変換規則が無いためエラーになり型が示される",
+				value:    [16]byte{},
+				wantType: "[16]uint8",
+			},
+			{
+				name:     "配列のカラムのとき、変換規則が無いためエラーになり型が示される",
+				value:    []string{"a", "b"},
+				wantType: "[]string",
+			},
+			{
+				name:     "numeric のカラムのとき、変換規則が無いためエラーになり型が示される",
+				value:    struct{ Int int64 }{Int: 1},
+				wantType: "struct",
+			},
+		}
+		for _, tt := range unsupportedTypeCases {
+			t.Run(tt.name, func(t *testing.T) {
+				rows := newMockRows([]string{"tst_col"}, [][]any{{tt.value}})
+
+				result, err := pgRowsToMaps(rows)
+				require.Error(t, err)
+				require.Contains(t, err.Error(), "unsupported Postgres value type")
+				require.Contains(t, err.Error(), tt.wantType)
+				require.Contains(t, err.Error(), "tst_col")
+				require.Nil(t, result)
+			})
+		}
+
 		t.Run("行の値の読み出しに失敗したとき、エラーになり行は返らない", func(t *testing.T) {
 			rows := newMockRows([]string{"id"}, [][]any{{int64(1)}})
 			rows.valuesErr = fmt.Errorf("dummy values error")

@@ -89,7 +89,7 @@ func TestLoad(t *testing.T) {
 			l := &BQLoader{}
 			tableConfig := model.TableConfig{BigQueryTable: "tst_games; DROP"}
 
-			err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeAppend)
+			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeAppend)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "not a valid identifier")
 		})
@@ -101,7 +101,7 @@ func TestLoad(t *testing.T) {
 				NaturalKey:    []string{"tst id"},
 			}
 
-			err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeMerge)
+			_, err := l.Load(context.Background(), tableConfig, "gs://tst-bucket/exports/tst.jsonl", model.DedupModeMerge)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "tst id")
 		})

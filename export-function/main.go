@@ -72,12 +72,13 @@ func newExporterService(ctx context.Context) (_ service.Service, retErr error) {
 		return nil, fmt.Errorf("invalid DEDUP_MODE %q (want merge or append)", mode)
 	}
 
-	if config.DBUser == "" || config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
-		return nil, fmt.Errorf("missing required environment variables (DB_USER, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")
+	if config.DBUser == "" || config.DBPassword == "" || config.DBName == "" ||
+		config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
+		return nil, fmt.Errorf("missing required environment variables (DB_USER, DB_PASSWORD, DB_NAME, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")
 	}
 
-	if config.DBName == "" {
-		config.DBName = "overload_party"
+	if config.InstanceConnectionName == "" && config.DBHost == "" {
+		return nil, fmt.Errorf("missing database endpoint: set either INSTANCE_CONNECTION_NAME or DB_HOST")
 	}
 
 	source, err := adapter.NewPostgresReader(ctx, config)

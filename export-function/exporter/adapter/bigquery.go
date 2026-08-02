@@ -2,13 +2,15 @@ package adapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"regexp"
 	"strings"
 
 	"cloud.google.com/go/bigquery"
-	"google.golang.org/api/iterator"
+	"google.golang.org/api/googleapi"
 
 	"export-to-bq/exporter/model"
 )
@@ -38,11 +40,11 @@ func NewBQLoader(ctx context.Context, projectID, datasetID string) (*BQLoader, e
 	return &BQLoader{client: client, datasetID: datasetID}, nil
 }
 
-// Load は GCS パスからデータを BigQuery テーブルにロードします。
+// Load は GCS パスからデータを BigQuery テーブルにロードし、取り込まれた行数を返します。
 // dedupMode == merge かつ NaturalKey 設定時はステージング + MERGE で冪等性を保証します。
-func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsPath string, dedupMode model.DedupMode) error {
+func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsPath string, dedupMode model.DedupMode) (int64, error) {
 	if !bqSafeIdentifier.MatchString(tableConfig.BigQueryTable) {
-		return fmt.Errorf("bigquery_table %q is not a valid identifier", tableConfig.BigQueryTable)
+		return 0, fmt.Errorf("bigquery_table %q is not a valid identifier", tableConfig.BigQueryTable)
 	}
 
 	shouldMerge := dedupMode == model.DedupModeMerge && len(tableConfig.NaturalKey) > 0
@@ -52,15 +54,15 @@ func (l *BQLoader) Load(ctx context.Context, tableConfig model.TableConfig, gcsP
 
 	for _, col := range tableConfig.NaturalKey {
 		if !bqSafeIdentifier.MatchString(col) {
-			return fmt.Errorf("natural_key column %q is not a valid identifier", col)
+			return 0, fmt.Errorf("natural_key column %q is not a valid identifier", col)
 		}
 	}
 
 	return l.mergeLoad(ctx, tableConfig, gcsPath)
 }
 
-// appendLoad は GCS からテーブルへ WriteAppend でロードします。
-func (l *BQLoader) appendLoad(ctx context.Context, tableName, gcsPath string) error {
+// appendLoad は GCS からテーブルへ WriteAppend でロードし、取り込まれた行数を返します。
+func (l *BQLoader) appendLoad(ctx context.Context, tableName, gcsPath string) (int64, error) {
 	table := l.client.Dataset(l.datasetID).Table(tableName)
 
 	gcsRef := bigquery.NewGCSReference(gcsPath)
@@ -73,24 +75,29 @@ func (l *BQLoader) appendLoad(ctx context.Context, tableName, gcsPath string) er
 
 	job, err := loader.Run(ctx)
 	if err != nil {
-		return fmt.Errorf("start load job: %w", err)
+		return 0, fmt.Errorf("start load job: %w", err)
 	}
 
 	status, err := job.Wait(ctx)
 	if err != nil {
-		return fmt.Errorf("wait for job: %w", err)
+		return 0, fmt.Errorf("wait for job: %w", err)
 	}
 
 	if err := status.Err(); err != nil {
-		return fmt.Errorf("load job failed: %w", err)
+		return 0, fmt.Errorf("load job failed: %w", err)
 	}
 
-	return nil
+	rowCount, err := loadedRowCount(status)
+	if err != nil {
+		return 0, fmt.Errorf("append load into %s: %w", tableName, err)
+	}
+
+	return rowCount, nil
 }
 
-// mergeLoad はステージングテーブル経由で MERGE ロードを行います。
+// mergeLoad はステージングテーブル経由で MERGE ロードを行い、変更された行数を返します。
 // ステージングテーブルは MERGE の成否にかかわらず常に削除されます。
-func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig, gcsPath string) error {
+func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig, gcsPath string) (int64, error) {
 	stagingName := tableConfig.BigQueryTable + stagingTableSuffix
 	dataset := l.client.Dataset(l.datasetID)
 	target := dataset.Table(tableConfig.BigQueryTable)
@@ -98,16 +105,18 @@ func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig,
 
 	targetMeta, err := target.Metadata(ctx)
 	if err != nil {
-		return fmt.Errorf("fetch target metadata for %s: %w", tableConfig.BigQueryTable, err)
+		return 0, fmt.Errorf("fetch target metadata for %s: %w", tableConfig.BigQueryTable, err)
 	}
 	if targetMeta.Schema == nil {
-		return fmt.Errorf("target table %s has no schema", tableConfig.BigQueryTable)
+		return 0, fmt.Errorf("target table %s has no schema", tableConfig.BigQueryTable)
 	}
 
 	// 前回クラッシュ時の残存テーブルを削除してからスキーマを複製
-	_ = staging.Delete(ctx)
+	if err := dropTableIfExists(ctx, staging); err != nil {
+		return 0, fmt.Errorf("drop stale staging table %s: %w", stagingName, err)
+	}
 	if err := staging.Create(ctx, &bigquery.TableMetadata{Schema: targetMeta.Schema}); err != nil {
-		return fmt.Errorf("create staging table %s: %w", stagingName, err)
+		return 0, fmt.Errorf("create staging table %s: %w", stagingName, err)
 	}
 	defer func() {
 		if delErr := staging.Delete(ctx); delErr != nil {
@@ -129,20 +138,20 @@ func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig,
 
 	loadJob, err := stagingLoader.Run(ctx)
 	if err != nil {
-		return fmt.Errorf("start staging load job: %w", err)
+		return 0, fmt.Errorf("start staging load job: %w", err)
 	}
 	loadStatus, err := loadJob.Wait(ctx)
 	if err != nil {
-		return fmt.Errorf("wait for staging load job: %w", err)
+		return 0, fmt.Errorf("wait for staging load job: %w", err)
 	}
 	if err := loadStatus.Err(); err != nil {
-		return fmt.Errorf("staging load job failed: %w", err)
+		return 0, fmt.Errorf("staging load job failed: %w", err)
 	}
 
 	columns := make([]string, 0, len(targetMeta.Schema))
 	for _, f := range targetMeta.Schema {
 		if !bqSafeIdentifier.MatchString(f.Name) {
-			return fmt.Errorf("target column %q is not a valid identifier", f.Name)
+			return 0, fmt.Errorf("target column %q is not a valid identifier", f.Name)
 		}
 		columns = append(columns, f.Name)
 	}
@@ -152,28 +161,59 @@ func (l *BQLoader) mergeLoad(ctx context.Context, tableConfig model.TableConfig,
 	query := l.client.Query(mergeSQL)
 	mergeJob, err := query.Run(ctx)
 	if err != nil {
-		return fmt.Errorf("start merge job: %w", err)
+		return 0, fmt.Errorf("start merge job: %w", err)
 	}
 	mergeStatus, err := mergeJob.Wait(ctx)
 	if err != nil {
-		return fmt.Errorf("wait for merge job: %w", err)
+		return 0, fmt.Errorf("wait for merge job: %w", err)
 	}
 	if err := mergeStatus.Err(); err != nil {
-		return fmt.Errorf("merge job failed: %w", err)
+		return 0, fmt.Errorf("merge job failed: %w", err)
 	}
 
-	// "zero rows matched" を検知するためのサニティチェック
-	iter, err := mergeJob.Read(ctx)
+	rowCount, err := mergedRowCount(mergeStatus)
+	if err != nil {
+		return 0, fmt.Errorf("merge into %s: %w", tableConfig.BigQueryTable, err)
+	}
+
+	return rowCount, nil
+}
+
+// dropTableIfExists はテーブルを削除します。既に存在しない場合は成功として扱います。
+func dropTableIfExists(ctx context.Context, table *bigquery.Table) error {
+	err := table.Delete(ctx)
 	if err == nil {
-		for {
-			var row []bigquery.Value
-			if err := iter.Next(&row); err == iterator.Done || err != nil {
-				break
-			}
-		}
+		return nil
 	}
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
 
-	return nil
+// loadedRowCount は完了したロードジョブが取り込んだ行数を返します。
+func loadedRowCount(status *bigquery.JobStatus) (int64, error) {
+	if status.Statistics == nil {
+		return 0, errors.New("load job reported no statistics")
+	}
+	stats, ok := status.Statistics.Details.(*bigquery.LoadStatistics)
+	if !ok {
+		return 0, fmt.Errorf("load job reported %T instead of load statistics", status.Statistics.Details)
+	}
+	return stats.OutputRows, nil
+}
+
+// mergedRowCount は完了した MERGE ジョブが変更した行数を返します。
+func mergedRowCount(status *bigquery.JobStatus) (int64, error) {
+	if status.Statistics == nil {
+		return 0, errors.New("merge job reported no statistics")
+	}
+	stats, ok := status.Statistics.Details.(*bigquery.QueryStatistics)
+	if !ok {
+		return 0, fmt.Errorf("merge job reported %T instead of query statistics", status.Statistics.Details)
+	}
+	return stats.NumDMLAffectedRows, nil
 }
 
 // buildMergeSQL は MERGE ステートメントを構築します。
