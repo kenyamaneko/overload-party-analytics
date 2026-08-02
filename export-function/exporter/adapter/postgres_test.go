@@ -83,21 +83,6 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "2025-06-15T10:30:00.123456789Z", got)
 		})
 
-		t.Run("JSONB カラムが []byte のとき、json.RawMessage として保持される", func(t *testing.T) {
-			jsonData := []byte(`{"faction":"tech","cards":[1,2,3]}`)
-			rows := newMockRows(
-				[]string{"deck_snapshot"},
-				[][]any{{jsonData}},
-			)
-
-			result, err := pgRowsToMaps(rows)
-			require.NoError(t, err)
-
-			raw, ok := result[0]["deck_snapshot"].(json.RawMessage)
-			require.True(t, ok)
-			require.Equal(t, string(jsonData), string(raw))
-		})
-
 		t.Run("JSONB カラムが map のとき、map のまま保持される", func(t *testing.T) {
 			mapData := map[string]interface{}{"key": "value"}
 			rows := newMockRows(
@@ -111,6 +96,24 @@ func TestPgRowsToMaps(t *testing.T) {
 			val, ok := result[0]["event_data"].(map[string]interface{})
 			require.True(t, ok)
 			require.Equal(t, "value", val["key"])
+		})
+
+		t.Run("JSONB カラムが配列のとき、配列のまま保持される", func(t *testing.T) {
+			arrayData := []interface{}{map[string]interface{}{"trigger": "on_deploy"}}
+			rows := newMockRows(
+				[]string{"effects"},
+				[][]any{{arrayData}},
+			)
+
+			result, err := pgRowsToMaps(rows)
+			require.NoError(t, err)
+
+			val, ok := result[0]["effects"].([]interface{})
+			require.True(t, ok)
+			require.Len(t, val, 1)
+			first, ok := val[0].(map[string]interface{})
+			require.True(t, ok)
+			require.Equal(t, "on_deploy", first["trigger"])
 		})
 
 		t.Run("行が無いとき、空の結果になる", func(t *testing.T) {
@@ -135,29 +138,6 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, result, 3)
 			require.Equal(t, "bob", result[1]["name"])
-		})
-
-		t.Run("json.RawMessage の JSONB を JSON 化しても二重エンコードされない", func(t *testing.T) {
-			// json.RawMessage として保持した JSONB は JSONL (GCS → BigQuery)
-			// シリアライズ時に文字列へ二重エンコードされず、JSON オブジェクトのまま出力される。
-			jsonData := []byte(`{"faction":"tech","level":5}`)
-			rows := newMockRows(
-				[]string{"player_id", "deck_snapshot"},
-				[][]any{{"p-123", jsonData}},
-			)
-
-			result, err := pgRowsToMaps(rows)
-			require.NoError(t, err)
-
-			encoded, err := json.Marshal(result[0])
-			require.NoError(t, err)
-
-			var parsed map[string]interface{}
-			require.NoError(t, json.Unmarshal(encoded, &parsed))
-
-			snapshot, ok := parsed["deck_snapshot"].(map[string]interface{})
-			require.True(t, ok)
-			require.Equal(t, "tech", snapshot["faction"])
 		})
 
 		t.Run("uuid のカラムのとき、ハイフン区切りの文字列に変換される", func(t *testing.T) {
@@ -218,9 +198,9 @@ func TestPgRowsToMaps(t *testing.T) {
 			wantType string
 		}{
 			{
-				name:     "配列のカラムのとき、変換規則が無いためエラーになり型が示される",
-				value:    []string{"a", "b"},
-				wantType: "[]string",
+				name:     "bytea のカラムのとき、変換規則が無いためエラーになり型が示される",
+				value:    []byte("dummy binary"),
+				wantType: "[]uint8",
 			},
 			{
 				name:     "numeric のカラムのとき、変換規則が無いためエラーになり型が示される",

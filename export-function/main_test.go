@@ -10,11 +10,9 @@ import (
 // setValidExporterEnv は初期化が設定検証を通過する環境変数一式を設定します。
 func setValidExporterEnv(t *testing.T) {
 	t.Helper()
-	t.Setenv("INSTANCE_CONNECTION_NAME", "")
-	t.Setenv("DB_HOST", "tst-db-host")
-	t.Setenv("DB_USER", "tst-user")
-	t.Setenv("DB_PASSWORD", "tst-password")
-	t.Setenv("DB_NAME", "tst-db")
+	t.Setenv("DATABASE_CONN", "host=tst-db-host dbname=tst-db user=tst-user sslmode=disable")
+	t.Setenv("DATABASE_IAM_AUTH_ENABLED", "false")
+	t.Setenv("CLOUDSQL_CONNECTION_NAME", "")
 	t.Setenv("BQ_PROJECT_ID", "tst-project")
 	t.Setenv("BQ_DATASET_ID", "tst-dataset")
 	t.Setenv("GCS_BUCKET", "tst-bucket")
@@ -23,9 +21,7 @@ func setValidExporterEnv(t *testing.T) {
 func TestNewExporterService(t *testing.T) {
 	t.Run("エクスポートサービスの初期化", func(t *testing.T) {
 		missingRequiredCases := []string{
-			"DB_USER",
-			"DB_PASSWORD",
-			"DB_NAME",
+			"DATABASE_CONN",
 			"BQ_PROJECT_ID",
 			"BQ_DATASET_ID",
 			"GCS_BUCKET",
@@ -42,15 +38,31 @@ func TestNewExporterService(t *testing.T) {
 			})
 		}
 
-		t.Run("INSTANCE_CONNECTION_NAMEとDB_HOSTがどちらも未設定のとき、初期化はエラーになり接続先の指定を促す", func(t *testing.T) {
+		invalidIAMAuthCases := []struct {
+			name  string
+			value string
+		}{
+			{name: "未設定のとき", value: ""},
+			{name: `"true"/"false" 以外の "yes" のとき`, value: "yes"},
+		}
+		for _, tt := range invalidIAMAuthCases {
+			t.Run("DATABASE_IAM_AUTH_ENABLED が"+tt.name+"、初期化はエラーになり許容値が示される", func(t *testing.T) {
+				setValidExporterEnv(t)
+				t.Setenv("DATABASE_IAM_AUTH_ENABLED", tt.value)
+
+				_, err := newExporterService(context.Background())
+				require.Error(t, err)
+				require.Contains(t, err.Error(), `DATABASE_IAM_AUTH_ENABLED must be "true" or "false"`)
+			})
+		}
+
+		t.Run("DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が未設定のとき、初期化はエラーになり接続名を要求する", func(t *testing.T) {
 			setValidExporterEnv(t)
-			t.Setenv("DB_HOST", "")
+			t.Setenv("DATABASE_IAM_AUTH_ENABLED", "true")
 
 			_, err := newExporterService(context.Background())
 			require.Error(t, err)
-			require.Contains(t, err.Error(), "missing database endpoint")
-			require.Contains(t, err.Error(), "INSTANCE_CONNECTION_NAME")
-			require.Contains(t, err.Error(), "DB_HOST")
+			require.Contains(t, err.Error(), "CLOUDSQL_CONNECTION_NAME is required")
 		})
 	})
 }

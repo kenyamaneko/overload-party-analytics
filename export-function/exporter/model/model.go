@@ -28,18 +28,23 @@ type Checkpoint struct {
 type Config struct {
 	Tables map[string]TableConfig `yaml:"tables"`
 
-	DBHost                 string
-	DBUser                 string
-	DBPassword             string
-	DBName                 string
-	InstanceConnectionName string
-	BQProjectID            string
-	BQDatasetID            string
-	GCSBucket              string
+	// DatabaseConn は PostgreSQL 接続文字列 (libpq キーワード形式)。
+	DatabaseConn string
+
+	// DatabaseIAMAuthEnabled は Cloud SQL への接続方式を切り替えます。
+	DatabaseIAMAuthEnabled bool
+
+	// CloudSQLConnectionName は Cloud SQL インスタンスの接続名 (project:region:instance)。
+	CloudSQLConnectionName string
+
+	BQProjectID string
+	BQDatasetID string
+	GCSBucket   string
 }
 
 // TableConfig はテーブル単位のエクスポート設定を表します。
 type TableConfig struct {
+	// SourceTable は取得元の PostgreSQL テーブルをスキーマ修飾名で表します。
 	SourceTable   string `yaml:"source_table"`
 	BigQueryTable string `yaml:"bigquery_table"`
 	Query         string `yaml:"query"`

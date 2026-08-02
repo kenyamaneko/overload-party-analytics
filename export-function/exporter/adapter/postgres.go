@@ -2,10 +2,12 @@ package adapter
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"log/slog"
+	"net"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -13,18 +15,22 @@ import (
 	"export-to-bq/exporter/model"
 )
 
+// maxPoolConns はエクスポートが同時に開く PostgreSQL 接続の上限です。
+const maxPoolConns = 5
+
 // PostgresReader は PostgreSQL からデータを読み取ります。
 type PostgresReader struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	closeDialer func()
 }
 
 // NewPostgresReader は新しい PostgresReader を生成します。
 func NewPostgresReader(ctx context.Context, config *model.Config) (*PostgresReader, error) {
-	pool, err := newPgPool(ctx, config)
+	pool, closeDialer, err := newPgPool(ctx, config)
 	if err != nil {
 		return nil, err
 	}
-	return &PostgresReader{pool: pool}, nil
+	return &PostgresReader{pool: pool, closeDialer: closeDialer}, nil
 }
 
 // Query は指定時間範囲でテーブルのクエリを実行します。
@@ -41,6 +47,7 @@ func (r *PostgresReader) Query(ctx context.Context, tableConfig model.TableConfi
 // Close はコネクションプールをクローズします。
 func (r *PostgresReader) Close() {
 	r.pool.Close()
+	r.closeDialer()
 }
 
 func pgRowsToMaps(rows pgx.Rows) ([]map[string]interface{}, error) {
@@ -84,50 +91,56 @@ func convertPgValue(val interface{}) (interface{}, error) {
 	case [16]byte:
 		// BigQuery 側の列が STRING のため、pgx が返す uuid の生バイト列を文字列表現にする
 		return uuid.UUID(v).String(), nil
-	case []byte:
-		// JSONB カラム: json.Encode がエスケープなしの JSON オブジェクトを書き出すよう保持
-		return json.RawMessage(v), nil
-	case map[string]interface{}:
+	case map[string]interface{}, []interface{}:
+		// jsonb はオブジェクトと配列のどちらの形でも格納できるため、両方を JSON 値のまま通す
 		return v, nil
 	default:
 		return nil, fmt.Errorf("unsupported Postgres value type %T", v)
 	}
 }
 
-func newPgPool(ctx context.Context, config *model.Config) (*pgxpool.Pool, error) {
-	var dsn string
-
-	switch {
-	case config.InstanceConnectionName != "":
-		dsn = fmt.Sprintf(
-			"host=/cloudsql/%s user=%s password=%s dbname=%s sslmode=disable",
-			config.InstanceConnectionName, config.DBUser, config.DBPassword, config.DBName,
-		)
-	case config.DBHost != "":
-		dsn = fmt.Sprintf(
-			"host=%s user=%s password=%s dbname=%s sslmode=disable",
-			config.DBHost, config.DBUser, config.DBPassword, config.DBName,
-		)
-	default:
-		return nil, fmt.Errorf("either INSTANCE_CONNECTION_NAME or DB_HOST must be set")
-	}
-
-	poolConfig, err := pgxpool.ParseConfig(dsn)
+// newPgPool は設定に応じた接続方式でコネクションプールを構築し、後始末の関数と併せて返します。
+func newPgPool(ctx context.Context, config *model.Config) (*pgxpool.Pool, func(), error) {
+	poolConfig, err := pgxpool.ParseConfig(config.DatabaseConn)
 	if err != nil {
-		return nil, fmt.Errorf("parse dsn: %w", err)
+		return nil, nil, fmt.Errorf("parse database conn: %w", err)
 	}
+	poolConfig.MaxConns = maxPoolConns
 
-	poolConfig.MaxConns = 5
+	cleanup := func() {}
+	if config.DatabaseIAMAuthEnabled {
+		dialer, err := cloudsqlconn.NewDialer(ctx,
+			cloudsqlconn.WithIAMAuthN(),
+			cloudsqlconn.WithDefaultDialOptions(cloudsqlconn.WithPrivateIP()),
+		)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cloudsqlconn new dialer: %w", err)
+		}
+		connectionName := config.CloudSQLConnectionName
+		poolConfig.ConnConfig.DialFunc = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return dialer.Dial(ctx, connectionName)
+		}
+		cleanup = func() { closeDialer(dialer) }
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
-		return nil, fmt.Errorf("create pool: %w", err)
+		cleanup()
+		return nil, nil, fmt.Errorf("create pool: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, fmt.Errorf("ping: %w", err)
+		cleanup()
+		return nil, nil, fmt.Errorf("ping: %w", err)
 	}
 
-	return pool, nil
+	return pool, cleanup, nil
+}
+
+func closeDialer(dialer *cloudsqlconn.Dialer) {
+	// 呼び出し元が終了処理の中で呼ぶため、失敗をログにとどめて処理を続行する。
+	if err := dialer.Close(); err != nil {
+		slog.Error("cloudsqlconn dialer close failed", "error", err)
+	}
 }

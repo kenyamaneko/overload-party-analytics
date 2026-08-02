@@ -1,3 +1,9 @@
+locals {
+  # Cloud SQL の IAM データベース認証では、SA メールから .gserviceaccount.com を
+  # 落とした文字列がそのまま DB ユーザー名になる。
+  db_user = trimsuffix(google_service_account.export_function.email, ".gserviceaccount.com")
+}
+
 resource "google_project_service" "cloudfunctions" {
   project            = var.project_id
   service            = "cloudfunctions.googleapis.com"
@@ -89,10 +95,12 @@ resource "google_cloudfunctions2_function" "export" {
     service_account_email = google_service_account.export_function.email
 
     environment_variables = {
-      BQ_PROJECT_ID = var.project_id
-      BQ_DATASET_ID = var.bq_dataset_id
-      GCS_BUCKET    = google_storage_bucket.staging.name
-      ENV           = var.env
+      DATABASE_CONN             = "user=${local.db_user} dbname=${var.database_name} sslmode=disable"
+      DATABASE_IAM_AUTH_ENABLED = "true"
+      CLOUDSQL_CONNECTION_NAME  = var.cloudsql_connection_name
+      BQ_PROJECT_ID             = var.project_id
+      BQ_DATASET_ID             = var.bq_dataset_id
+      GCS_BUCKET                = google_storage_bucket.staging.name
     }
   }
 
@@ -110,6 +118,28 @@ resource "google_cloudfunctions2_function" "export" {
     google_project_service.cloudfunctions,
     google_project_service.cloudbuild,
   ]
+}
+
+# Cloud SQL: IAM database user (instance itself is owned by overload-party-infra)
+resource "google_sql_user" "export_function" {
+  name     = local.db_user
+  instance = var.cloudsql_instance_name
+  project  = var.project_id
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+}
+
+# IAM: Cloud SQL Client (connect through the Cloud SQL connector)
+resource "google_project_iam_member" "cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.export_function.email}"
+}
+
+# IAM: Cloud SQL Instance User (log in with an IAM database account)
+resource "google_project_iam_member" "cloudsql_instance_user" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.export_function.email}"
 }
 
 # IAM: GCS Object Creator (staging bucket)

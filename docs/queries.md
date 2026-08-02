@@ -49,6 +49,18 @@ FROM `overload-party-dev.analytics.players_latest`
 GROUP BY is_premium;
 ```
 
+### オンボーディングの離脱地点
+
+```sql
+SELECT
+  onboarding_status,
+  COUNT(*) as player_count,
+  ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) as percentage
+FROM `overload-party-dev.analytics.players_latest`
+GROUP BY onboarding_status
+ORDER BY player_count DESC;
+```
+
 ### 新規登録ユーザー (週次)
 
 ```sql
@@ -72,12 +84,13 @@ ORDER BY week DESC;
 
 ```sql
 SELECT
-  DATE(created_at) as date,
-  COUNT(*) as total_games,
-  COUNT(DISTINCT player1_id) + COUNT(DISTINCT player2_id) as unique_players,
-  ROUND(COUNT(*) / (COUNT(DISTINCT player1_id) + COUNT(DISTINCT player2_id)), 2) as avg_games_per_player
-FROM `overload-party-dev.analytics.games_latest`
-WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+  DATE(g.created_at) as date,
+  COUNT(DISTINCT g.game_id) as total_games,
+  COUNT(DISTINCT gp.player_id) as unique_players,
+  ROUND(COUNT(DISTINCT g.game_id) / COUNT(DISTINCT gp.player_id), 2) as avg_games_per_player
+FROM `overload-party-dev.analytics.games_latest` g
+JOIN `overload-party-dev.analytics.game_players` gp USING (game_id)
+WHERE g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
 ORDER BY date DESC;
 ```
@@ -121,6 +134,37 @@ GROUP BY hour_of_day
 ORDER BY hour_of_day;
 ```
 
+### プレイヤー別勝率
+
+```sql
+SELECT
+  gp.player_id,
+  COUNT(*) as total_games,
+  COUNTIF(g.winning_player_num = gp.player_num) as wins,
+  ROUND(COUNTIF(g.winning_player_num = gp.player_num) / COUNT(*) * 100, 2) as win_rate_percentage
+FROM `overload-party-dev.analytics.game_players` gp
+JOIN `overload-party-dev.analytics.games_latest` g USING (game_id)
+WHERE g.status = 'finished'
+  AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+GROUP BY gp.player_id
+HAVING total_games >= 5
+ORDER BY win_rate_percentage DESC;
+```
+
+### 先攻・後攻の勝率
+
+```sql
+SELECT
+  first_player,
+  COUNT(*) as total_games,
+  COUNTIF(winning_player_num = first_player) as first_player_wins,
+  ROUND(COUNTIF(winning_player_num = first_player) / COUNT(*) * 100, 2) as first_player_win_rate
+FROM `overload-party-dev.analytics.games_latest`
+WHERE status = 'finished'
+  AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+GROUP BY first_player;
+```
+
 ---
 
 ## カードバランス分析
@@ -144,25 +188,25 @@ LIMIT 20;
 ### カード勝率分析
 
 ```sql
-WITH card_games AS (
-  SELECT
-    ge.game_id,
-    JSON_EXTRACT_SCALAR(ge.event_data, '$.cardId') as card_id,
-    ge.player_id
-  FROM `overload-party-dev.analytics.game_events` ge
-  WHERE ge.event_type = 'play_card'
-    AND ge.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
-  GROUP BY ge.game_id, card_id, ge.player_id
+WITH card_plays AS (
+  SELECT DISTINCT
+    game_id,
+    JSON_EXTRACT_SCALAR(event_data, '$.cardId') as card_id,
+    player_num
+  FROM `overload-party-dev.analytics.game_events`
+  WHERE event_type = 'play_card'
+    AND player_num IS NOT NULL
+    AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 7 DAY)
 )
 SELECT
-  cg.card_id,
-  COUNT(DISTINCT cg.game_id) as games_used,
-  COUNTIF(g.winner_id = cg.player_id) as wins,
-  ROUND(COUNTIF(g.winner_id = cg.player_id) / COUNT(DISTINCT cg.game_id) * 100, 2) as win_rate_percentage
-FROM card_games cg
-JOIN `overload-party-dev.analytics.games_latest` g ON cg.game_id = g.game_id
+  cp.card_id,
+  COUNT(DISTINCT cp.game_id) as games_used,
+  COUNTIF(g.winning_player_num = cp.player_num) as wins,
+  ROUND(COUNTIF(g.winning_player_num = cp.player_num) / COUNT(DISTINCT cp.game_id) * 100, 2) as win_rate_percentage
+FROM card_plays cp
+JOIN `overload-party-dev.analytics.games_latest` g USING (game_id)
 WHERE g.status = 'finished'
-GROUP BY cg.card_id
+GROUP BY cp.card_id
 HAVING games_used >= 10  -- 最低10ゲーム使用されたカードのみ
 ORDER BY win_rate_percentage DESC;
 ```
@@ -214,7 +258,7 @@ WITH monthly_subs AS (
   SELECT
     FORMAT_DATE('%Y-%m', DATE(created_at)) as month,
     COUNT(*) as new_subscriptions,
-    COUNTIF(status = 'canceled' OR status = 'expired') as churned_subscriptions
+    COUNTIF(status IN ('cancelled', 'expired', 'revoked')) as churned_subscriptions
   FROM `overload-party-dev.analytics.subscriptions_latest`
   WHERE created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 12 MONTH)
   GROUP BY month
@@ -265,13 +309,12 @@ ORDER BY r.month DESC;
 ```sql
 SELECT
   product_id,
-  platform,
   COUNT(*) as purchase_count,
   -- 実際の価格は products テーブルから JOIN して取得
   ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) as percentage
 FROM `overload-party-dev.analytics.purchases`
 WHERE purchased_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY product_id, platform
+GROUP BY product_id
 ORDER BY purchase_count DESC;
 ```
 
@@ -279,57 +322,49 @@ ORDER BY purchase_count DESC;
 
 ## ゲームバランス分析（詳細）
 
-### ファクション別勝率
+### ファクション別のデッキ構築数
+
+対戦で実際に使われたデッキ (`battle.game_decks`) はエクスポートしていないため、対戦単位の
+ファクション別勝率は求まりません。構築されたデッキの分布までを見ます。
 
 ```sql
 SELECT
-  JSON_EXTRACT_SCALAR(player1_deck_snapshot, '$.faction') AS faction,
-  COUNT(*) AS total_games,
-  COUNTIF(winner_id = player1_id) AS wins,
-  ROUND(COUNTIF(winner_id = player1_id) / COUNT(*) * 100, 2) AS win_rate
+  faction,
+  COUNT(DISTINCT CONCAT(player_id, '-', CAST(deck_id AS STRING))) AS deck_count,
+  COUNT(DISTINCT player_id) AS player_count
+FROM `overload-party-dev.analytics.deck_cards_latest`
+GROUP BY faction
+ORDER BY deck_count DESC;
+```
+
+### 決着理由の分布
+
+```sql
+SELECT
+  win_reason,
+  COUNT(*) AS count,
+  ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) AS percentage
 FROM `overload-party-dev.analytics.games_latest`
 WHERE status = 'finished'
   AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY faction
-ORDER BY win_rate DESC;
-```
-
-### ファクション対戦マトリクス
-
-```sql
-WITH faction_matchups AS (
-  SELECT
-    JSON_EXTRACT_SCALAR(player1_deck_snapshot, '$.faction') AS faction1,
-    JSON_EXTRACT_SCALAR(player2_deck_snapshot, '$.faction') AS faction2,
-    winner_id,
-    player1_id
-  FROM `overload-party-dev.analytics.games_latest`
-  WHERE status = 'finished'
-    AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-)
-SELECT
-  faction1,
-  faction2,
-  COUNT(*) AS total_games,
-  COUNTIF(winner_id = player1_id) AS faction1_wins,
-  ROUND(COUNTIF(winner_id = player1_id) / COUNT(*) * 100, 2) AS faction1_win_rate
-FROM faction_matchups
-GROUP BY faction1, faction2
-ORDER BY faction1, faction2;
-```
-
-### 勝利条件の分布
-
-```sql
-SELECT
-  JSON_EXTRACT_SCALAR(ge.event_data, '$.winCondition') AS win_condition,
-  COUNT(*) AS count,
-  ROUND(COUNT(*) / SUM(COUNT(*)) OVER() * 100, 2) AS percentage
-FROM `overload-party-dev.analytics.game_events` ge
-WHERE ge.event_type = 'game_end'
-  AND ge.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
-GROUP BY win_condition
+GROUP BY win_reason
 ORDER BY count DESC;
+```
+
+### エンジンバージョン別の平均ゲーム時間
+
+```sql
+SELECT
+  engine_version,
+  card_data_version,
+  COUNT(*) AS total_games,
+  ROUND(AVG(TIMESTAMP_DIFF(finished_at, created_at, MINUTE)), 2) AS avg_duration_minutes
+FROM `overload-party-dev.analytics.games_latest`
+WHERE status = 'finished'
+  AND finished_at IS NOT NULL
+  AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+GROUP BY engine_version, card_data_version
+ORDER BY total_games DESC;
 ```
 
 ### デッキ内カード採用率（カード別）
@@ -340,11 +375,11 @@ SELECT
   cd.card_name,
   cd.faction,
   cd.card_type,
-  COUNT(DISTINCT CONCAT(dc.player_id, '-', dc.deck_id)) AS decks_including,
-  ROUND(COUNT(DISTINCT CONCAT(dc.player_id, '-', dc.deck_id)) /
-    (SELECT COUNT(DISTINCT CONCAT(player_id, '-', deck_id)) FROM `overload-party-dev.analytics.deck_cards`) * 100, 2
+  COUNT(DISTINCT CONCAT(dc.player_id, '-', CAST(dc.deck_id AS STRING))) AS decks_including,
+  ROUND(COUNT(DISTINCT CONCAT(dc.player_id, '-', CAST(dc.deck_id AS STRING))) /
+    (SELECT COUNT(DISTINCT CONCAT(player_id, '-', CAST(deck_id AS STRING))) FROM `overload-party-dev.analytics.deck_cards_latest`) * 100, 2
   ) AS adoption_rate
-FROM `overload-party-dev.analytics.deck_cards` dc
+FROM `overload-party-dev.analytics.deck_cards_latest` dc
 JOIN `overload-party-dev.analytics.card_definitions_latest` cd ON dc.card_id = cd.card_id
 GROUP BY dc.card_id, cd.card_name, cd.faction, cd.card_type
 ORDER BY adoption_rate DESC;
@@ -354,14 +389,16 @@ ORDER BY adoption_rate DESC;
 
 ```sql
 SELECT
-  DATE(created_at) AS date,
-  AVG(CAST(JSON_EXTRACT_SCALAR(
-    (SELECT ge.event_data FROM `overload-party-dev.analytics.game_events` ge
-     WHERE ge.game_id = g.game_id AND ge.event_type = 'game_end' LIMIT 1),
-    '$.turnCount') AS INT64)) AS avg_turns
+  DATE(g.created_at) AS date,
+  ROUND(AVG(turns.max_turn), 2) AS avg_turns
 FROM `overload-party-dev.analytics.games_latest` g
-WHERE status = 'finished'
-  AND created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
+JOIN (
+  SELECT game_id, MAX(CAST(JSON_EXTRACT_SCALAR(event_data, '$.turn') AS INT64)) AS max_turn
+  FROM `overload-party-dev.analytics.game_events`
+  GROUP BY game_id
+) turns USING (game_id)
+WHERE g.status = 'finished'
+  AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
 GROUP BY date
 ORDER BY date DESC;
 ```
@@ -377,11 +414,12 @@ WITH player_stats AS (
   SELECT
     p.player_id,
     p.is_premium,
-    COUNTIF(g.winner_id = p.player_id) as wins,
+    COUNTIF(g.winning_player_num = gp.player_num) as wins,
     COUNT(g.game_id) as total_games
   FROM `overload-party-dev.analytics.players_latest` p
+  LEFT JOIN `overload-party-dev.analytics.game_players` gp ON gp.player_id = p.player_id
   LEFT JOIN `overload-party-dev.analytics.games_latest` g
-    ON (g.player1_id = p.player_id OR g.player2_id = p.player_id)
+    ON g.game_id = gp.game_id
     AND g.status = 'finished'
     AND g.created_at >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)
   GROUP BY p.player_id, p.is_premium

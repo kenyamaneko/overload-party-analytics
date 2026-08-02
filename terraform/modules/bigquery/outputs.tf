@@ -14,7 +14,7 @@ output "table_ids" {
     games            = google_bigquery_table.games.table_id
     game_events      = google_bigquery_table.game_events.table_id
     players          = google_bigquery_table.players.table_id
-    matches          = google_bigquery_table.matches.table_id
+    game_players     = google_bigquery_table.game_players.table_id
     subscriptions    = google_bigquery_table.subscriptions.table_id
     purchases        = google_bigquery_table.purchases.table_id
     card_definitions = google_bigquery_table.card_definitions.table_id

@@ -1,106 +1,104 @@
 tables:
   games:
-    source_table: games
+    source_table: battle.games
     bigquery_table: games
     natural_key: [game_id, updated_at]
     query: |
       SELECT
-        game_id, player1_id, player2_id,
-        player1_deck_snapshot,
-        player2_deck_snapshot,
-        status, winner_id, created_at, updated_at, finished_at
-      FROM games
+        game_id, status, first_player, winning_player_num, win_reason,
+        engine_version, card_data_version,
+        created_at, updated_at, finished_at
+      FROM battle.games
       WHERE updated_at >= $1 AND updated_at < $2
       ORDER BY updated_at ASC
 
   game_events:
-    source_table: game_events
+    source_table: battle.game_events
     bigquery_table: game_events
     natural_key: [game_id, sequence_number]
     query: |
       SELECT
-        game_id, sequence_number, event_type, player_id,
+        game_id, sequence_number, event_type, player_num,
         event_data,
         created_at
-      FROM game_events
+      FROM battle.game_events
       WHERE created_at >= $1 AND created_at < $2
       ORDER BY created_at ASC
 
+  game_players:
+    source_table: gateway.game_players
+    bigquery_table: game_players
+    natural_key: [game_id, player_num]
+    query: |
+      SELECT
+        gp.game_id, gp.player_num, gp.player_id, g.updated_at
+      FROM gateway.game_players gp
+      JOIN battle.games g ON g.game_id = gp.game_id
+      WHERE g.updated_at >= $1 AND g.updated_at < $2
+      ORDER BY g.updated_at ASC
+
   players:
-    source_table: players
+    source_table: account.players
     bigquery_table: players
     natural_key: [player_id, updated_at]
     query: |
       SELECT
-        player_id, firebase_uid, username, level, exp, wins, losses,
-        is_premium, equipped_icon_no, selected_faction, premium_expires_at,
-        created_at, updated_at
-      FROM players
+        player_id, is_premium, equipped_icon_no, onboarding_status,
+        premium_expires_at, created_at, updated_at
+      FROM account.players
       WHERE updated_at >= $1 AND updated_at < $2
       ORDER BY updated_at ASC
 
-  matches:
-    source_table: matches
-    bigquery_table: matches
-    natural_key: [match_id]
-    query: |
-      SELECT
-        match_id, game_id, created_at
-      FROM matches
-      WHERE created_at >= $1 AND created_at < $2
-      ORDER BY created_at ASC
-
   card_definitions:
-    source_table: card_definitions
+    source_table: card.card_definitions
     bigquery_table: card_definitions
     natural_key: [card_id, updated_at]
     query: |
       SELECT
-        card_id, card_name, resource_label, faction, card_type,
+        card_id, card_name, resource_label, faction, card_type, subtype,
         resizable, elastic,
         stats,
         effect_text,
         effects,
         restriction, is_active,
         created_at, updated_at
-      FROM card_definitions
+      FROM card.card_definitions
       WHERE updated_at >= $1 AND updated_at < $2
       ORDER BY updated_at ASC
 
   deck_cards:
-    source_table: deck_cards
+    source_table: card.deck_cards
     bigquery_table: deck_cards
-    natural_key: [player_id, deck_id, card_id, art_no]
+    natural_key: [player_id, deck_id, card_id, art_no, updated_at]
     query: |
       SELECT
         dc.player_id, dc.deck_id, dc.card_id, dc.art_no, dc.count,
-        d.deck_name, d.is_valid, d.created_at
-      FROM deck_cards dc
-      JOIN decks d ON dc.player_id = d.player_id AND dc.deck_id = d.deck_id
-      WHERE d.created_at >= $1 AND d.created_at < $2
-      ORDER BY d.created_at ASC
+        d.faction, d.created_at, d.updated_at
+      FROM card.deck_cards dc
+      JOIN card.decks d ON dc.player_id = d.player_id AND dc.deck_id = d.deck_id
+      WHERE d.updated_at >= $1 AND d.updated_at < $2
+      ORDER BY d.updated_at ASC
 
   subscriptions:
-    source_table: subscriptions
+    source_table: shop.subscriptions
     bigquery_table: subscriptions
     natural_key: [subscription_id, updated_at]
     query: |
       SELECT
-        player_id, subscription_id, product_id, platform, purchase_token,
-        status, current_period_start, current_period_end,
+        subscription_id, player_id, product_id, status,
+        current_period_start, current_period_end,
         created_at, updated_at
-      FROM subscriptions
+      FROM shop.subscriptions
       WHERE updated_at >= $1 AND updated_at < $2
       ORDER BY updated_at ASC
 
   purchases:
-    source_table: one_time_purchases
+    source_table: shop.one_time_purchases
     bigquery_table: purchases
     natural_key: [purchase_id]
     query: |
       SELECT
-        player_id, purchase_id, product_id, platform, purchase_token,
-        purchased_at
-      FROM one_time_purchases
+        purchase_id, player_id, product_id, purchased_at
+      FROM shop.one_time_purchases
       WHERE purchased_at >= $1 AND purchased_at < $2
       ORDER BY purchased_at ASC

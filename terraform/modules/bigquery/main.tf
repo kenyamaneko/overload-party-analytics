@@ -32,16 +32,16 @@ resource "google_bigquery_table" "games" {
     field = "updated_at"
   }
 
-  clustering = ["status", "winner_id"]
+  clustering = ["status", "winning_player_num"]
 
   schema = jsonencode([
     { name = "game_id", type = "STRING", mode = "REQUIRED" },
-    { name = "player1_id", type = "STRING", mode = "REQUIRED" },
-    { name = "player2_id", type = "STRING", mode = "REQUIRED" },
-    { name = "player1_deck_snapshot", type = "JSON", mode = "NULLABLE" },
-    { name = "player2_deck_snapshot", type = "JSON", mode = "NULLABLE" },
     { name = "status", type = "STRING", mode = "REQUIRED" },
-    { name = "winner_id", type = "STRING", mode = "NULLABLE" },
+    { name = "first_player", type = "INT64", mode = "REQUIRED" },
+    { name = "winning_player_num", type = "INT64", mode = "NULLABLE" },
+    { name = "win_reason", type = "STRING", mode = "NULLABLE" },
+    { name = "engine_version", type = "STRING", mode = "REQUIRED" },
+    { name = "card_data_version", type = "STRING", mode = "REQUIRED" },
     { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
     { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
     { name = "finished_at", type = "TIMESTAMP", mode = "NULLABLE" },
@@ -69,7 +69,7 @@ resource "google_bigquery_table" "game_events" {
     { name = "game_id", type = "STRING", mode = "REQUIRED" },
     { name = "sequence_number", type = "INT64", mode = "REQUIRED" },
     { name = "event_type", type = "STRING", mode = "REQUIRED" },
-    { name = "player_id", type = "STRING", mode = "NULLABLE" },
+    { name = "player_num", type = "INT64", mode = "NULLABLE" },
     { name = "event_data", type = "JSON", mode = "REQUIRED" },
     { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
   ])
@@ -90,19 +90,13 @@ resource "google_bigquery_table" "players" {
     field = "updated_at"
   }
 
-  clustering = ["is_premium", "selected_faction"]
+  clustering = ["is_premium", "onboarding_status"]
 
   schema = jsonencode([
     { name = "player_id", type = "STRING", mode = "REQUIRED" },
-    { name = "firebase_uid", type = "STRING", mode = "REQUIRED" },
-    { name = "username", type = "STRING", mode = "REQUIRED" },
-    { name = "level", type = "INT64", mode = "REQUIRED" },
-    { name = "exp", type = "INT64", mode = "REQUIRED" },
-    { name = "wins", type = "INT64", mode = "NULLABLE" },
-    { name = "losses", type = "INT64", mode = "NULLABLE" },
     { name = "is_premium", type = "BOOL", mode = "REQUIRED" },
     { name = "equipped_icon_no", type = "INT64", mode = "NULLABLE" },
-    { name = "selected_faction", type = "STRING", mode = "NULLABLE" },
+    { name = "onboarding_status", type = "STRING", mode = "REQUIRED" },
     { name = "premium_expires_at", type = "TIMESTAMP", mode = "NULLABLE" },
     { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
     { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
@@ -113,23 +107,25 @@ resource "google_bigquery_table" "players" {
   }
 }
 
-# Matches Table
-resource "google_bigquery_table" "matches" {
+# Game Players Table (プレイヤーとゲームスロットの対応。games と JOIN して
+# プレイヤー単位の勝敗を集計する経路になる)
+resource "google_bigquery_table" "game_players" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
-  table_id   = "matches"
+  table_id   = "game_players"
 
   time_partitioning {
     type  = "DAY"
-    field = "created_at"
+    field = "updated_at"
   }
 
-  clustering = ["game_id"]
+  clustering = ["player_id", "game_id"]
 
   schema = jsonencode([
-    { name = "match_id", type = "STRING", mode = "REQUIRED" },
     { name = "game_id", type = "STRING", mode = "REQUIRED" },
-    { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "player_num", type = "INT64", mode = "REQUIRED" },
+    { name = "player_id", type = "STRING", mode = "REQUIRED" },
+    { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
   ])
 
   labels = {
@@ -151,11 +147,9 @@ resource "google_bigquery_table" "subscriptions" {
   clustering = ["player_id", "status"]
 
   schema = jsonencode([
+    { name = "subscription_id", type = "INT64", mode = "REQUIRED" },
     { name = "player_id", type = "STRING", mode = "REQUIRED" },
-    { name = "subscription_id", type = "STRING", mode = "REQUIRED" },
     { name = "product_id", type = "STRING", mode = "REQUIRED" },
-    { name = "platform", type = "STRING", mode = "REQUIRED" },
-    { name = "purchase_token", type = "STRING", mode = "REQUIRED" },
     { name = "status", type = "STRING", mode = "REQUIRED" },
     { name = "current_period_start", type = "TIMESTAMP", mode = "REQUIRED" },
     { name = "current_period_end", type = "TIMESTAMP", mode = "REQUIRED" },
@@ -184,15 +178,16 @@ resource "google_bigquery_table" "card_definitions" {
   schema = jsonencode([
     { name = "card_id", type = "STRING", mode = "REQUIRED" },
     { name = "card_name", type = "STRING", mode = "REQUIRED" },
-    { name = "resource_label", type = "STRING", mode = "NULLABLE" },
+    { name = "resource_label", type = "STRING", mode = "REQUIRED" },
     { name = "faction", type = "STRING", mode = "REQUIRED" },
     { name = "card_type", type = "STRING", mode = "REQUIRED" },
+    { name = "subtype", type = "STRING", mode = "NULLABLE" },
     { name = "resizable", type = "BOOL", mode = "REQUIRED" },
     { name = "elastic", type = "BOOL", mode = "REQUIRED" },
-    { name = "stats", type = "JSON", mode = "NULLABLE" },
+    { name = "stats", type = "JSON", mode = "REQUIRED" },
     { name = "effect_text", type = "STRING", mode = "NULLABLE" },
     { name = "effects", type = "JSON", mode = "NULLABLE" },
-    { name = "restriction", type = "STRING", mode = "NULLABLE" },
+    { name = "restriction", type = "STRING", mode = "REQUIRED" },
     { name = "is_active", type = "BOOL", mode = "REQUIRED" },
     { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
     { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
@@ -203,7 +198,7 @@ resource "google_bigquery_table" "card_definitions" {
   }
 }
 
-# Deck Cards Table
+# Deck Cards Table (append-only, use deck_cards_latest view for current state)
 resource "google_bigquery_table" "deck_cards" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
@@ -211,7 +206,7 @@ resource "google_bigquery_table" "deck_cards" {
 
   time_partitioning {
     type  = "DAY"
-    field = "created_at"
+    field = "updated_at"
   }
 
   clustering = ["player_id", "card_id"]
@@ -220,11 +215,11 @@ resource "google_bigquery_table" "deck_cards" {
     { name = "player_id", type = "STRING", mode = "REQUIRED" },
     { name = "deck_id", type = "INT64", mode = "REQUIRED" },
     { name = "card_id", type = "STRING", mode = "REQUIRED" },
-    { name = "art_no", type = "INT64", mode = "NULLABLE" },
+    { name = "art_no", type = "INT64", mode = "REQUIRED" },
     { name = "count", type = "INT64", mode = "REQUIRED" },
-    { name = "deck_name", type = "STRING", mode = "NULLABLE" },
-    { name = "is_valid", type = "BOOL", mode = "NULLABLE" },
+    { name = "faction", type = "STRING", mode = "REQUIRED" },
     { name = "created_at", type = "TIMESTAMP", mode = "REQUIRED" },
+    { name = "updated_at", type = "TIMESTAMP", mode = "REQUIRED" },
   ])
 
   labels = {
@@ -246,11 +241,9 @@ resource "google_bigquery_table" "purchases" {
   clustering = ["player_id", "product_id"]
 
   schema = jsonencode([
+    { name = "purchase_id", type = "INT64", mode = "REQUIRED" },
     { name = "player_id", type = "STRING", mode = "REQUIRED" },
-    { name = "purchase_id", type = "STRING", mode = "REQUIRED" },
     { name = "product_id", type = "STRING", mode = "REQUIRED" },
-    { name = "platform", type = "STRING", mode = "REQUIRED" },
-    { name = "purchase_token", type = "STRING", mode = "REQUIRED" },
     { name = "purchased_at", type = "TIMESTAMP", mode = "REQUIRED" },
   ])
 
@@ -326,6 +319,34 @@ resource "google_bigquery_table" "players_latest" {
   }
 
   depends_on = [google_bigquery_table.players]
+}
+
+# Deck Cards Latest View (dedup: the newest generation of each deck, kept as a whole)
+#
+# A deck edit rewrites the whole composition under the deck's single updated_at, so ranking
+# per card would keep the cards that the edit removed.
+resource "google_bigquery_table" "deck_cards_latest" {
+  project    = var.project_id
+  dataset_id = google_bigquery_dataset.analytics.dataset_id
+  table_id   = "deck_cards_latest"
+
+  view {
+    query          = <<-SQL
+      SELECT * EXCEPT(rn) FROM (
+        SELECT *, RANK() OVER (
+          PARTITION BY player_id, deck_id ORDER BY updated_at DESC
+        ) AS rn
+        FROM `${var.project_id}.${var.dataset_id}.deck_cards`
+      ) WHERE rn = 1
+    SQL
+    use_legacy_sql = false
+  }
+
+  labels = {
+    env = var.env
+  }
+
+  depends_on = [google_bigquery_table.deck_cards]
 }
 
 # Card Definitions Latest View (dedup: one row per card_id)
