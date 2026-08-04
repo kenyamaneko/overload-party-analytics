@@ -105,7 +105,8 @@ export BQ_PROJECT_ID="overload-party-dev"
 export BQ_DATASET_ID="analytics"
 export GCS_BUCKET="overload-party-dev-bq-staging"
 
-# ローカル起動用。デプロイ時と同じくエントリポイントを "/" で受けるため FUNCTION_TARGET を渡す
+# ローカル起動に必須。どちらか一方でも未設定なら起動しない
+# FUNCTION_TARGET はデプロイ時と同じくエントリポイントを "/" で受けるために要る
 export PORT="8080"
 export FUNCTION_TARGET="ExportPostgresToBigQuery"
 

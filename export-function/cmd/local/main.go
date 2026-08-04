@@ -25,5 +25,9 @@ func run() error {
 	if port == "" {
 		return fmt.Errorf("missing required environment variable (PORT)")
 	}
+	// 未設定だと Functions Framework が "/" ではなく登録名のパスで待ち受けるため、起動前に必須とする
+	if os.Getenv("FUNCTION_TARGET") == "" {
+		return fmt.Errorf("missing required environment variable (FUNCTION_TARGET)")
+	}
 	return funcframework.Start(port)
 }
