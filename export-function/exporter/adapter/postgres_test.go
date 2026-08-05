@@ -51,7 +51,7 @@ func newMockRows(fields []string, data [][]any) *mockRows {
 
 func TestPgRowsToMaps(t *testing.T) {
 	t.Run("クエリ結果行のマップ変換", func(t *testing.T) {
-		t.Run("文字列・整数・真偽・NULL を含む行のとき、各カラムの値が保持される", func(t *testing.T) {
+		t.Run("文字列・整数・真偽・NULLを含む行のとき、各カラムの値が保持される", func(t *testing.T) {
 			rows := newMockRows(
 				[]string{"name", "count", "active", "nullable"},
 				[][]any{{"alice", int64(42), true, nil}},
@@ -68,7 +68,7 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Nil(t, row["nullable"])
 		})
 
-		t.Run("time.Time のカラムのとき、RFC3339Nano 文字列に変換される", func(t *testing.T) {
+		t.Run("time.Timeのカラムのとき、RFC3339Nano文字列に変換される", func(t *testing.T) {
 			ts := time.Date(2025, 6, 15, 10, 30, 0, 123456789, time.UTC)
 			rows := newMockRows(
 				[]string{"created_at"},
@@ -83,7 +83,7 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "2025-06-15T10:30:00.123456789Z", got)
 		})
 
-		t.Run("JSONB カラムが map のとき、map のまま保持される", func(t *testing.T) {
+		t.Run("JSONBカラムがmapのとき、mapのまま保持される", func(t *testing.T) {
 			mapData := map[string]interface{}{"key": "value"}
 			rows := newMockRows(
 				[]string{"event_data"},
@@ -98,7 +98,7 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "value", val["key"])
 		})
 
-		t.Run("JSONB カラムが配列のとき、配列のまま保持される", func(t *testing.T) {
+		t.Run("JSONBカラムが配列のとき、配列のまま保持される", func(t *testing.T) {
 			arrayData := []interface{}{map[string]interface{}{"trigger": "on_deploy"}}
 			rows := newMockRows(
 				[]string{"effects"},
@@ -140,7 +140,7 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "bob", result[1]["name"])
 		})
 
-		t.Run("uuid のカラムのとき、ハイフン区切りの文字列に変換される", func(t *testing.T) {
+		t.Run("uuidのカラムのとき、ハイフン区切りの文字列に変換される", func(t *testing.T) {
 			rows := newMockRows(
 				[]string{"player_id"},
 				[][]any{{[16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0}}},
@@ -164,7 +164,7 @@ func TestPgRowsToMaps(t *testing.T) {
 			require.Equal(t, "00000000-0000-0000-0000-000000000000", result[0]["player_id"])
 		})
 
-		t.Run("uuid のカラムを JSON 化したとき、文字列として出力される", func(t *testing.T) {
+		t.Run("uuidのカラムをJSON化したとき、文字列として出力される", func(t *testing.T) {
 			rows := newMockRows(
 				[]string{"player_id"},
 				[][]any{{[16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0}}},
@@ -198,12 +198,12 @@ func TestPgRowsToMaps(t *testing.T) {
 			wantType string
 		}{
 			{
-				name:     "bytea のカラムのとき、変換規則が無いためエラーになり型が示される",
+				name:     "byteaのカラムのとき、変換規則が無いためエラーになり型が示される",
 				value:    []byte("dummy binary"),
 				wantType: "[]uint8",
 			},
 			{
-				name:     "numeric のカラムのとき、変換規則が無いためエラーになり型が示される",
+				name:     "numericのカラムのとき、変換規則が無いためエラーになり型が示される",
 				value:    struct{ Int int64 }{Int: 1},
 				wantType: "struct",
 			},

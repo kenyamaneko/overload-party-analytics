@@ -50,7 +50,7 @@ tables:
 			wantErrContains string
 		}{
 			{
-				name: "source_table が無いとき、エラーになる",
+				name: "source_tableが無いとき、エラーになる",
 				yaml: `
 tables:
   games:
@@ -60,7 +60,7 @@ tables:
 				wantErrContains: "source_table is required",
 			},
 			{
-				name: "bigquery_table が無いとき、エラーになる",
+				name: "bigquery_tableが無いとき、エラーになる",
 				yaml: `
 tables:
   games:
@@ -70,7 +70,7 @@ tables:
 				wantErrContains: "bigquery_table is required",
 			},
 			{
-				name: "query が無いとき、エラーになる",
+				name: "queryが無いとき、エラーになる",
 				yaml: `
 tables:
   games:
@@ -80,7 +80,7 @@ tables:
 				wantErrContains: "query is required",
 			},
 			{
-				name: "natural_key が無いとき、エラーになる",
+				name: "natural_keyが無いとき、エラーになる",
 				yaml: `
 tables:
   games:
@@ -91,12 +91,12 @@ tables:
 				wantErrContains: "natural_key is required",
 			},
 			{
-				name:            "tables が空のとき、エラーになる",
+				name:            "tablesが空のとき、エラーになる",
 				yaml:            `tables:`,
 				wantErrContains: "no tables defined in config",
 			},
 			{
-				name:            "YAML として解析できないとき、エラーになる",
+				name:            "YAMLとして解析できないとき、エラーになる",
 				yaml:            `{{{invalid yaml`,
 				wantErrContains: "parse config file",
 			},
@@ -115,7 +115,7 @@ tables:
 			require.Contains(t, err.Error(), "read config file")
 		})
 
-		t.Run("source_table が無いとき、エラーメッセージに該当テーブル名が含まれる", func(t *testing.T) {
+		t.Run("source_tableが無いとき、エラーメッセージに該当テーブル名が含まれる", func(t *testing.T) {
 			path := writeConfigFile(t, `
 tables:
   my_custom_table:
@@ -128,7 +128,7 @@ tables:
 			require.Contains(t, err.Error(), "my_custom_table")
 		})
 
-		t.Run("bigquery_table の識別子検証", func(t *testing.T) {
+		t.Run("bigquery_tableの識別子検証", func(t *testing.T) {
 			invalidIdentifierCases := []struct {
 				name          string
 				bigqueryTable string
@@ -179,7 +179,7 @@ tables:
 			})
 		})
 
-		t.Run("natural_key の識別子検証", func(t *testing.T) {
+		t.Run("natural_keyの識別子検証", func(t *testing.T) {
 			t.Run("カラム名にハイフンを含むとき、エラーになり該当テーブル名とカラム名が示される", func(t *testing.T) {
 				path := writeConfigFile(t, `
 tables:
