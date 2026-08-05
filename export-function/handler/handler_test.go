@@ -18,7 +18,7 @@ import (
 
 func TestParseExportRequest(t *testing.T) {
 	t.Run("エクスポートリクエストのパース", func(t *testing.T) {
-		t.Run("全項目を含む JSON のとき、各フィールドがパースされる", func(t *testing.T) {
+		t.Run("全項目を含むJSONのとき、各フィールドがパースされる", func(t *testing.T) {
 			body := `{"tables": ["games", "players"], "mode": "full", "start_date": "2024-01-01", "end_date": "2024-02-01"}`
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
@@ -30,7 +30,7 @@ func TestParseExportRequest(t *testing.T) {
 			require.Equal(t, "2024-02-01", req.EndDate)
 		})
 
-		t.Run("mode 未指定のとき、incremental が既定になる", func(t *testing.T) {
+		t.Run("mode未指定のとき、incrementalが既定になる", func(t *testing.T) {
 			body := `{"tables": ["games"]}`
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
@@ -44,10 +44,10 @@ func TestParseExportRequest(t *testing.T) {
 			body            string
 			wantErrContains string
 		}{
-			{name: "tables が空のとき、エラーになる", body: `{"tables": []}`, wantErrContains: "no tables specified"},
-			{name: "tables が無いとき、エラーになる", body: `{"mode": "full"}`, wantErrContains: "no tables specified"},
-			{name: "JSON として解析できないとき、エラーになる", body: `{invalid`, wantErrContains: "invalid request"},
-			{name: "body が空のとき、エラーになる", body: ``, wantErrContains: "invalid request"},
+			{name: "tablesが空のとき、エラーになる", body: `{"tables": []}`, wantErrContains: "no tables specified"},
+			{name: "tablesが無いとき、エラーになる", body: `{"mode": "full"}`, wantErrContains: "no tables specified"},
+			{name: "JSONとして解析できないとき、エラーになる", body: `{invalid`, wantErrContains: "invalid request"},
+			{name: "bodyが空のとき、エラーになる", body: ``, wantErrContains: "invalid request"},
 		}
 		for _, tt := range invalidCases {
 			t.Run(tt.name, func(t *testing.T) {
@@ -58,7 +58,7 @@ func TestParseExportRequest(t *testing.T) {
 			})
 		}
 
-		t.Run("mode が未定義値のとき、エラーメッセージに該当値が含まれる", func(t *testing.T) {
+		t.Run("modeが未定義値のとき、エラーメッセージに該当値が含まれる", func(t *testing.T) {
 			body := `{"tables": ["games"], "mode": "xyz"}`
 			r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 
@@ -92,8 +92,8 @@ func TestHandler(t *testing.T) {
 			name string
 			body string
 		}{
-			{name: "不正な JSON のとき、400 を返す", body: `not json`},
-			{name: "tables が空のとき、400 を返す", body: `{"tables": []}`},
+			{name: "不正なJSONのとき、400を返す", body: `not json`},
+			{name: "tablesが空のとき、400を返す", body: `{"tables": []}`},
 		}
 		for _, tt := range badRequestCases {
 			t.Run(tt.name, func(t *testing.T) {
@@ -107,7 +107,7 @@ func TestHandler(t *testing.T) {
 			})
 		}
 
-		t.Run("全テーブル成功のとき、200 と結果一覧を返す", func(t *testing.T) {
+		t.Run("全テーブル成功のとき、200と結果一覧を返す", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:        "games",
@@ -145,7 +145,7 @@ func TestHandler(t *testing.T) {
 			require.Equal(t, int64(42), resp.Results[0].RowsExported)
 		})
 
-		t.Run("2 テーブルのうち 1 テーブルが失敗したとき、500 を返し失敗したテーブルのエラー内容が結果に残る", func(t *testing.T) {
+		t.Run("2テーブルのうち1テーブルが失敗したとき、500を返し失敗したテーブルのエラー内容が結果に残る", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:        "games",
@@ -175,7 +175,7 @@ func TestHandler(t *testing.T) {
 			require.Contains(t, resp.Results[1].Error, "connection refused")
 		})
 
-		t.Run("全テーブルが失敗したとき、500 を返す", func(t *testing.T) {
+		t.Run("全テーブルが失敗したとき、500を返す", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:     "games",
@@ -199,7 +199,7 @@ func TestHandler(t *testing.T) {
 			require.Contains(t, resp.Message, "Some exports failed")
 		})
 
-		t.Run("checkpoint 書き込み失敗のとき、500 を返し checkpoint の失敗が示される", func(t *testing.T) {
+		t.Run("checkpoint書き込み失敗のとき、500を返しcheckpointの失敗が示される", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:              "games",
@@ -225,7 +225,7 @@ func TestHandler(t *testing.T) {
 			require.Contains(t, resp.Message, "Checkpoint")
 		})
 
-		t.Run("checkpoint 書き込み失敗のテーブルと通常の失敗のテーブルが混在するとき、500 を返し checkpoint の失敗が示される", func(t *testing.T) {
+		t.Run("checkpoint書き込み失敗のテーブルと通常の失敗のテーブルが混在するとき、500を返しcheckpointの失敗が示される", func(t *testing.T) {
 			results := []model.ExportResult{
 				{
 					Table:              "games",
@@ -273,7 +273,7 @@ func TestHandler(t *testing.T) {
 			require.Equal(t, "Successfully exported 0 tables", resp.Message)
 		})
 
-		t.Run("サービス初期化に失敗したとき、500 を返す", func(t *testing.T) {
+		t.Run("サービス初期化に失敗したとき、500を返す", func(t *testing.T) {
 			factory := func(_ context.Context) (service.Service, error) {
 				return nil, fmt.Errorf("missing required environment variables")
 			}

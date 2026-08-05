@@ -294,7 +294,7 @@ func TestPostgresExport(t *testing.T) {
 			})
 		}
 
-		t.Run("カードマスターのとき、効果定義が JSON の配列として出力される", func(t *testing.T) {
+		t.Run("カードマスターのとき、効果定義がJSONの配列として出力される", func(t *testing.T) {
 			start, end := wholeRange()
 			rows, err := newReader(t).Query(ctx, sharedConf.Tables["card_definitions"], start, end)
 			require.NoError(t, err)
@@ -310,7 +310,7 @@ func TestPostgresExport(t *testing.T) {
 			require.NotZero(t, arrayCount)
 		})
 
-		t.Run("対戦テーブルのとき、投入した対戦の内容が JSONL に現れる", func(t *testing.T) {
+		t.Run("対戦テーブルのとき、投入した対戦の内容がJSONLに現れる", func(t *testing.T) {
 			start, end := wholeRange()
 			rows, err := newReader(t).Query(ctx, sharedConf.Tables["games"], start, end)
 			require.NoError(t, err)
@@ -334,7 +334,7 @@ func TestPostgresExport(t *testing.T) {
 			require.Equal(t, tstFixtureTime, parsed.UTC())
 		})
 
-		t.Run("プレイヤーとゲームスロットの対応のとき、プレイヤー ID がハイフン区切りの文字列で出力される", func(t *testing.T) {
+		t.Run("プレイヤーとゲームスロットの対応のとき、プレイヤーIDがハイフン区切りの文字列で出力される", func(t *testing.T) {
 			start, end := wholeRange()
 			rows, err := newReader(t).Query(ctx, sharedConf.Tables["game_players"], start, end)
 			require.NoError(t, err)

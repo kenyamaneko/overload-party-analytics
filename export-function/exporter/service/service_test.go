@@ -565,14 +565,14 @@ func TestResolveTimeRange(t *testing.T) {
 			wantEnd    time.Time
 		}{
 			{
-				name:       "incremental モードのとき、checkpoint から現在までの範囲になる",
+				name:       "incrementalモードのとき、checkpointから現在までの範囲になる",
 				mode:       "incremental",
 				checkpoint: checkpoint,
 				wantStart:  checkpoint,
 				wantEnd:    now,
 			},
 			{
-				name:       "incremental モードで日付を指定しても、checkpoint から現在までの範囲になる",
+				name:       "incrementalモードで日付を指定しても、checkpointから現在までの範囲になる",
 				mode:       "incremental",
 				startDate:  "2024-01-01",
 				endDate:    "2024-02-01",
@@ -581,28 +581,28 @@ func TestResolveTimeRange(t *testing.T) {
 				wantEnd:    now,
 			},
 			{
-				name:       "full モードで日付未指定のとき、ゼロ値から現在までの範囲になる",
+				name:       "fullモードで日付未指定のとき、ゼロ値から現在までの範囲になる",
 				mode:       "full",
 				checkpoint: checkpoint,
 				wantStart:  time.Time{},
 				wantEnd:    now,
 			},
 			{
-				name:      "full モードで start_date のみ指定のとき、start は指定日・end は現在になる",
+				name:      "fullモードでstart_dateのみ指定のとき、startは指定日・endは現在になる",
 				mode:      "full",
 				startDate: "2024-06-01",
 				wantStart: time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC),
 				wantEnd:   now,
 			},
 			{
-				name:      "full モードで end_date のみ指定のとき、start はゼロ値・end は指定日になる",
+				name:      "fullモードでend_dateのみ指定のとき、startはゼロ値・endは指定日になる",
 				mode:      "full",
 				endDate:   "2024-07-01",
 				wantStart: time.Time{},
 				wantEnd:   time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC),
 			},
 			{
-				name:      "full モードで両日付を指定のとき、指定した範囲になる",
+				name:      "fullモードで両日付を指定のとき、指定した範囲になる",
 				mode:      "full",
 				startDate: "2024-06-01",
 				endDate:   "2024-07-01",
@@ -625,11 +625,11 @@ func TestResolveTimeRange(t *testing.T) {
 			endDate   string
 		}{
 			{
-				name:      "full モードで start_date が不正なとき、エラーになる",
+				name:      "fullモードでstart_dateが不正なとき、エラーになる",
 				startDate: "not-a-date",
 			},
 			{
-				name:    "full モードで end_date が不正なとき、エラーになる",
+				name:    "fullモードでend_dateが不正なとき、エラーになる",
 				endDate: "bad",
 			},
 		}

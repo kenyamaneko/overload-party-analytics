@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuildMergeSQL(t *testing.T) {
-	t.Run("MERGE 文の生成", func(t *testing.T) {
+	t.Run("MERGE文の生成", func(t *testing.T) {
 		tests := []struct {
 			name         string
 			datasetID    string
@@ -20,7 +20,7 @@ func TestBuildMergeSQL(t *testing.T) {
 			columns      []string
 		}{
 			{
-				name:         "自然キーが1個・列が1個のとき、全キーと全列を含む MERGE 文になる",
+				name:         "自然キーが1個・列が1個のとき、全キーと全列を含むMERGE文になる",
 				datasetID:    "analytics",
 				targetTable:  "games",
 				stagingTable: "games_staging",
@@ -28,7 +28,7 @@ func TestBuildMergeSQL(t *testing.T) {
 				columns:      []string{"game_id"},
 			},
 			{
-				name:         "自然キーが1個・列が複数のとき、全キーと全列を含む MERGE 文になる",
+				name:         "自然キーが1個・列が複数のとき、全キーと全列を含むMERGE文になる",
 				datasetID:    "analytics",
 				targetTable:  "games",
 				stagingTable: "games_staging",
@@ -36,7 +36,7 @@ func TestBuildMergeSQL(t *testing.T) {
 				columns:      []string{"game_id", "score", "created_at"},
 			},
 			{
-				name:         "自然キーが複数・列が1個のとき、全キーと全列を含む MERGE 文になる",
+				name:         "自然キーが複数・列が1個のとき、全キーと全列を含むMERGE文になる",
 				datasetID:    "analytics",
 				targetTable:  "scores",
 				stagingTable: "scores_staging",
@@ -44,7 +44,7 @@ func TestBuildMergeSQL(t *testing.T) {
 				columns:      []string{"value"},
 			},
 			{
-				name:         "自然キーが複数・列が複数のとき、全キーと全列を含む MERGE 文になる",
+				name:         "自然キーが複数・列が複数のとき、全キーと全列を含むMERGE文になる",
 				datasetID:    "analytics",
 				targetTable:  "scores",
 				stagingTable: "scores_staging",
@@ -73,8 +73,8 @@ func TestBuildMergeSQL(t *testing.T) {
 }
 
 func TestNewBQLoader(t *testing.T) {
-	t.Run("BQLoader の生成", func(t *testing.T) {
-		t.Run("データセット ID にハイフンを含むとき、生成はエラーになり該当値が示される", func(t *testing.T) {
+	t.Run("BQLoaderの生成", func(t *testing.T) {
+		t.Run("データセットIDにハイフンを含むとき、生成はエラーになり該当値が示される", func(t *testing.T) {
 			_, err := NewBQLoader(context.Background(), "tst-project", "tst-dataset")
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "tst-dataset")
@@ -84,7 +84,7 @@ func TestNewBQLoader(t *testing.T) {
 }
 
 func TestLoad(t *testing.T) {
-	t.Run("BigQuery へのロード", func(t *testing.T) {
+	t.Run("BigQueryへのロード", func(t *testing.T) {
 		t.Run("ロード先テーブル名にセミコロンを含むとき、ロードはエラーになる", func(t *testing.T) {
 			l := &BQLoader{}
 			tableConfig := model.TableConfig{
@@ -97,7 +97,7 @@ func TestLoad(t *testing.T) {
 			require.Contains(t, err.Error(), "not a valid identifier")
 		})
 
-		t.Run("natural_key のカラム名に空白を含むとき、ロードはエラーになる", func(t *testing.T) {
+		t.Run("natural_keyのカラム名に空白を含むとき、ロードはエラーになる", func(t *testing.T) {
 			l := &BQLoader{}
 			tableConfig := model.TableConfig{
 				BigQueryTable: "tst_games",
@@ -109,7 +109,7 @@ func TestLoad(t *testing.T) {
 			require.Contains(t, err.Error(), "tst id")
 		})
 
-		t.Run("natural_key が空のとき、ロードはエラーになり突き合わせるキーが無いことが示される", func(t *testing.T) {
+		t.Run("natural_keyが空のとき、ロードはエラーになり突き合わせるキーが無いことが示される", func(t *testing.T) {
 			l := &BQLoader{}
 			tableConfig := model.TableConfig{BigQueryTable: "tst_games"}
 

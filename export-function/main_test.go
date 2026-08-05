@@ -46,7 +46,7 @@ func TestNewExporterService(t *testing.T) {
 			{name: `"true"/"false" 以外の "yes" のとき`, value: "yes"},
 		}
 		for _, tt := range invalidIAMAuthCases {
-			t.Run("DATABASE_IAM_AUTH_ENABLED が"+tt.name+"、初期化はエラーになり許容値が示される", func(t *testing.T) {
+			t.Run("DATABASE_IAM_AUTH_ENABLEDが"+tt.name+"、初期化はエラーになり許容値が示される", func(t *testing.T) {
 				setValidExporterEnv(t)
 				t.Setenv("DATABASE_IAM_AUTH_ENABLED", tt.value)
 
@@ -56,7 +56,7 @@ func TestNewExporterService(t *testing.T) {
 			})
 		}
 
-		t.Run("DATABASE_IAM_AUTH_ENABLED が true かつ CLOUDSQL_CONNECTION_NAME が未設定のとき、初期化はエラーになり接続名を要求する", func(t *testing.T) {
+		t.Run("DATABASE_IAM_AUTH_ENABLEDがtrueかつCLOUDSQL_CONNECTION_NAMEが未設定のとき、初期化はエラーになり接続名を要求する", func(t *testing.T) {
 			setValidExporterEnv(t)
 			t.Setenv("DATABASE_IAM_AUTH_ENABLED", "true")
 
