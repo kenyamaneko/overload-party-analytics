@@ -35,7 +35,7 @@ jobs:
     name: Type-check integration tests
     needs: ci
     if: needs.ci.outputs.code-changed == 'true'
-    runs-on: ubicloud-standard-2
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout
