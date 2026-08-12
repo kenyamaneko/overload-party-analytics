@@ -1,6 +1,6 @@
 # overload-party-analytics
 
-カードゲーム Overload Party の Cloud SQL PostgreSQL → BigQuery データエクスポート基盤を担うリポジトリ。カード使用率・勝率・課金メトリクスの分析基盤として使う。Cloud SQL から増分エクスポート（Firestore チェックポイント）し、Cloud Scheduler で自動実行する。
+カードゲーム Overload Party の Cloud SQL PostgreSQL → BigQuery データエクスポート基盤を担うリポジトリ。
 
 ## 技術スタック
 
