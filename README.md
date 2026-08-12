@@ -1,6 +1,6 @@
 # overload-party-analytics
 
-カードゲーム Overload Party の Cloud SQL PostgreSQL → BigQuery データエクスポート基盤を担うリポジトリ。
+カードゲーム Overload Party の対戦結果分析を担うジョブ。
 
 ## 技術スタック
 
