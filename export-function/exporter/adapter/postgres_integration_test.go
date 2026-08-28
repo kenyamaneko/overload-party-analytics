@@ -315,13 +315,10 @@ func TestPostgresExport(t *testing.T) {
 			rows, err := newReader(t).Query(ctx, sharedConf.Tables["games"], start, end)
 			require.NoError(t, err)
 
-			var found map[string]interface{}
-			for _, row := range encodeJSONL(t, rows) {
-				if row["game_id"] == tstGameID {
-					found = row
-				}
-			}
-			require.NotNil(t, found)
+			decoded := encodeJSONL(t, rows)
+			require.Len(t, decoded, 1)
+			found := decoded[0]
+			require.Equal(t, tstGameID, found["game_id"])
 			require.Equal(t, "finished", found["status"])
 			require.Equal(t, float64(1), found["first_player"])
 			require.Equal(t, float64(2), found["winning_player_num"])
