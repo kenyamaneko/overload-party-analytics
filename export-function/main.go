@@ -50,12 +50,20 @@ func newCloudLoggingHandler() slog.Handler {
 // 未設定・解釈できない値は起動時に失敗させ、既定値へのフォールバックは行いません。
 func applyEnvConfig(config *model.Config) error {
 	config.DatabaseConn = os.Getenv("DATABASE_CONN")
+	if config.DatabaseConn == "" {
+		return fmt.Errorf("missing required environment variable (DATABASE_CONN)")
+	}
 	config.BQProjectID = os.Getenv("BQ_PROJECT_ID")
+	if config.BQProjectID == "" {
+		return fmt.Errorf("missing required environment variable (BQ_PROJECT_ID)")
+	}
 	config.BQDatasetID = os.Getenv("BQ_DATASET_ID")
+	if config.BQDatasetID == "" {
+		return fmt.Errorf("missing required environment variable (BQ_DATASET_ID)")
+	}
 	config.GCSBucket = os.Getenv("GCS_BUCKET")
-
-	if config.DatabaseConn == "" || config.BQProjectID == "" || config.BQDatasetID == "" || config.GCSBucket == "" {
-		return fmt.Errorf("missing required environment variables (DATABASE_CONN, BQ_PROJECT_ID, BQ_DATASET_ID, GCS_BUCKET)")
+	if config.GCSBucket == "" {
+		return fmt.Errorf("missing required environment variable (GCS_BUCKET)")
 	}
 
 	rawIAMAuth := os.Getenv("DATABASE_IAM_AUTH_ENABLED")
