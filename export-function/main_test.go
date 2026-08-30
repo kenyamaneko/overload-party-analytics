@@ -20,23 +20,33 @@ func setValidExporterEnv(t *testing.T) {
 
 func TestNewExporterService(t *testing.T) {
 	t.Run("エクスポートサービスの初期化", func(t *testing.T) {
-		missingRequiredCases := []string{
-			"DATABASE_CONN",
-			"BQ_PROJECT_ID",
-			"BQ_DATASET_ID",
-			"GCS_BUCKET",
+		missingRequiredCases := []struct {
+			envName string
+			wantMsg string
+		}{
+			{envName: "DATABASE_CONN", wantMsg: "missing required environment variable (DATABASE_CONN)"},
+			{envName: "BQ_PROJECT_ID", wantMsg: "missing required environment variable (BQ_PROJECT_ID)"},
+			{envName: "BQ_DATASET_ID", wantMsg: "missing required environment variable (BQ_DATASET_ID)"},
+			{envName: "GCS_BUCKET", wantMsg: "missing required environment variable (GCS_BUCKET)"},
 		}
-		for _, envName := range missingRequiredCases {
-			t.Run(envName+"が未設定のとき、初期化はエラーになり不足変数群が示される", func(t *testing.T) {
+		for _, tt := range missingRequiredCases {
+			t.Run(tt.envName+`が未設定のとき、エラーメッセージは"`+tt.wantMsg+`"になる`, func(t *testing.T) {
 				setValidExporterEnv(t)
-				t.Setenv(envName, "")
+				t.Setenv(tt.envName, "")
 
 				_, err := newExporterService(context.Background())
-				require.Error(t, err)
-				require.Contains(t, err.Error(), "missing required environment variables")
-				require.Contains(t, err.Error(), envName)
+				require.EqualError(t, err, tt.wantMsg)
 			})
 		}
+
+		t.Run(`DATABASE_CONNとGCS_BUCKETが同時に未設定のとき、エラーメッセージは"missing required environment variable (DATABASE_CONN)"になる`, func(t *testing.T) {
+			setValidExporterEnv(t)
+			t.Setenv("DATABASE_CONN", "")
+			t.Setenv("GCS_BUCKET", "")
+
+			_, err := newExporterService(context.Background())
+			require.EqualError(t, err, "missing required environment variable (DATABASE_CONN)")
+		})
 
 		invalidIAMAuthCases := []struct {
 			name  string
