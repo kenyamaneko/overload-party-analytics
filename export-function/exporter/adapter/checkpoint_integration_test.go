@@ -38,7 +38,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 		return store
 	}
 
-	t.Run("[結合テスト]チェックポイントの取得", func(t *testing.T) {
+	t.Run("[チェックポイントの取得]", func(t *testing.T) {
 		t.Run("指定したテーブル名のチェックポイントがFirestoreに存在しないとき、取得結果は初回エクスポートを表す初期状態のチェックポイントになる", func(t *testing.T) {
 			store := newStore(t)
 
@@ -89,7 +89,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 		})
 	})
 
-	t.Run("[結合テスト]チェックポイントの更新", func(t *testing.T) {
+	t.Run("[チェックポイントの更新]", func(t *testing.T) {
 		t.Run("更新を呼ぶと、そのテーブルのチェックポイントの更新日時は呼び出し時点の時刻になる", func(t *testing.T) {
 			store := newStore(t)
 			table := "tst_table_updated_at"

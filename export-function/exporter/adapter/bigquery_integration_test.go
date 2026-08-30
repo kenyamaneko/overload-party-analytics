@@ -155,7 +155,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 		return names
 	}
 
-	t.Run("[結合テスト]BigQueryへのMERGE取り込み", func(t *testing.T) {
+	t.Run("[BigQueryへのMERGE取り込み]", func(t *testing.T) {
 		t.Run("対象テーブルに一意キーが一致する既存行があるとき、取り込み後にその行はステージングテーブル側の値に更新される", func(t *testing.T) {
 			table := "tst_case1"
 			createBQTable(t, table)
