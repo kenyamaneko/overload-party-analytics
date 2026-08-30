@@ -70,7 +70,7 @@ func readJSONLObject(t *testing.T, w *GCSWriter, gsPath string) []map[string]int
 func TestGCSWriterWrite(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("[GCSへの行データ書き込み]", func(t *testing.T) {
+	t.Run("[GCS書き込み] 行データの書き込み", func(t *testing.T) {
 		t.Run("行データを渡して書き込みを行うと、戻り値のgs://パスのオブジェクトから、渡した行を渡した順にJSONLとしてデコードした内容が読み出せる", func(t *testing.T) {
 			srv := newTestGCSServer(t)
 			w := newTestGCSWriter(t, srv)
