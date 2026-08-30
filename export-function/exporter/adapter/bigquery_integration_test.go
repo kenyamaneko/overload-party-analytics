@@ -156,7 +156,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 	}
 
 	t.Run("[結合テスト]BigQueryへのMERGE取り込み", func(t *testing.T) {
-		t.Run("targetにnatural keyが一致する既存行があるとき、Load後にその行はstaging側の値に更新される", func(t *testing.T) {
+		t.Run("対象テーブルに一意キーが一致する既存行があるとき、取り込み後にその行はステージングテーブル側の値に更新される", func(t *testing.T) {
 			table := "tst_case1"
 			createBQTable(t, table)
 			insertBQRow(t, table, "k1", "old")
@@ -168,7 +168,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.Equal(t, "new", readBQRows(t, table)["k1"])
 		})
 
-		t.Run("staging側にtargetに存在しないnatural keyを持つ行があるとき、Load後にその行がtargetに新規追加される", func(t *testing.T) {
+		t.Run("ステージングテーブル側に対象テーブルに存在しない一意キーを持つ行があるとき、取り込み後にその行が対象テーブルに新規追加される", func(t *testing.T) {
 			table := "tst_case2"
 			createBQTable(t, table)
 			gcsPath := uploadJSONL(t, "case2/data.jsonl", []map[string]interface{}{{"id": "k2", "value": "added"}})
@@ -179,7 +179,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.Equal(t, "added", readBQRows(t, table)["k2"])
 		})
 
-		t.Run("target側にのみ存在しstaging側(GCS上のJSONL)に含まれない行は、Load後もtargetに残り続ける", func(t *testing.T) {
+		t.Run("対象テーブルにのみ存在しステージングテーブル側に含まれない行は、取り込み後も対象テーブルに残り続ける", func(t *testing.T) {
 			table := "tst_case3"
 			createBQTable(t, table)
 			insertBQRow(t, table, "k3", "kept")
@@ -191,7 +191,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.Equal(t, "kept", readBQRows(t, table)["k3"])
 		})
 
-		t.Run("同一のGCSパスに対してLoadを2回連続で実行しても、target側の該当行は重複しない", func(t *testing.T) {
+		t.Run("同一のGCSパスに対して取り込みを2回連続で実行しても、対象テーブルの該当行は重複しない", func(t *testing.T) {
 			table := "tst_case4"
 			createBQTable(t, table)
 			gcsPath := uploadJSONL(t, "case4/data.jsonl", []map[string]interface{}{{"id": "k4", "value": "v4"}})
@@ -204,7 +204,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.Equal(t, int64(1), countBQRowsByID(t, table, "k4"))
 		})
 
-		t.Run("Load実行前に、前回実行のステージングテーブル(<bigquery_table>_staging)が既に残っていても、Loadはエラーにならず正常に完了する", func(t *testing.T) {
+		t.Run("取り込み実行前に前回実行のステージングテーブルが既に残っていても、取り込みはエラーにならず該当行が正しく取り込まれる", func(t *testing.T) {
 			table := "tst_case5"
 			createBQTable(t, table)
 			createBQTable(t, table+stagingTableSuffix)
@@ -216,7 +216,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.Equal(t, "v5", readBQRows(t, table)["k5"])
 		})
 
-		t.Run("Loadが成功したあと、ステージングテーブルは削除され残らない", func(t *testing.T) {
+		t.Run("取り込みが成功したあと、ステージングテーブルは削除され残らない", func(t *testing.T) {
 			table := "tst_case6"
 			createBQTable(t, table)
 			gcsPath := uploadJSONL(t, "case6/data.jsonl", []map[string]interface{}{{"id": "k6", "value": "v6"}})
@@ -227,7 +227,7 @@ func TestBQLoaderMergeLoad(t *testing.T) {
 			require.NotContains(t, bqTableNames(t), table+stagingTableSuffix)
 		})
 
-		t.Run("targetテーブルが存在しないとき、Loadはエラーになり、エラーメッセージに対象テーブル名が示される。その後、targetテーブルを作成してから同じLoadをやり直すと成功する", func(t *testing.T) {
+		t.Run("対象テーブルが存在しないとき、取り込みはエラーになり、エラーメッセージに対象テーブル名が示される。その後、対象テーブルを作成してから同じ取り込みをやり直すと該当行が正しく取り込まれる", func(t *testing.T) {
 			table := "tst_case8"
 			tableConfig := model.TableConfig{BigQueryTable: table, NaturalKey: []string{"id"}}
 			gcsPath := uploadJSONL(t, "case8/data.jsonl", []map[string]interface{}{{"id": "k8", "value": "v8"}})

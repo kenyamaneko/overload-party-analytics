@@ -71,7 +71,7 @@ func TestGCSWriterWrite(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("[結合テスト]GCSへの行データ書き込み", func(t *testing.T) {
-		t.Run("行データを渡してWriteを呼ぶと、戻り値のgs://パスのオブジェクトから、渡した行を渡した順にJSONLとしてデコードした内容が読み出せる", func(t *testing.T) {
+		t.Run("行データを渡して書き込みを行うと、戻り値のgs://パスのオブジェクトから、渡した行を渡した順にJSONLとしてデコードした内容が読み出せる", func(t *testing.T) {
 			srv := newTestGCSServer(t)
 			w := newTestGCSWriter(t, srv)
 			rows := []map[string]interface{}{
@@ -90,7 +90,7 @@ func TestGCSWriterWrite(t *testing.T) {
 			require.Equal(t, "two", got[1]["value"])
 		})
 
-		t.Run("バケット名・テーブル名・タイムスタンプを指定してWriteを呼ぶと、戻り値がgs://<バケット名>/exports/<日付>/<テーブル名>/<時刻>.jsonl形式になる", func(t *testing.T) {
+		t.Run("バケット名・テーブル名・タイムスタンプを指定して書き込みを行うと、戻り値がgs://<バケット名>/exports/<日付>/<テーブル名>/<時刻>.jsonl形式になる", func(t *testing.T) {
 			srv := newTestGCSServer(t)
 			w := newTestGCSWriter(t, srv)
 
@@ -100,7 +100,7 @@ func TestGCSWriterWrite(t *testing.T) {
 			require.Equal(t, fmt.Sprintf("gs://%s/exports/20260314/games/090530.123.jsonl", gcsIntegrationBucket), gsPath)
 		})
 
-		t.Run("行データが空のとき、Writeは0行のオブジェクトを書き込む", func(t *testing.T) {
+		t.Run("行データが空のとき、書き込み結果は0行のオブジェクトになる", func(t *testing.T) {
 			srv := newTestGCSServer(t)
 			w := newTestGCSWriter(t, srv)
 
@@ -110,7 +110,7 @@ func TestGCSWriterWrite(t *testing.T) {
 			require.Empty(t, readJSONLObject(t, w, gsPath))
 		})
 
-		t.Run("JSONにエンコードできない値を含む行データを渡すと、Writeはエラーになる", func(t *testing.T) {
+		t.Run("JSONにエンコードできない値を含む行データを渡すと、エラーメッセージに行のエンコードに失敗した旨が示される", func(t *testing.T) {
 			srv := newTestGCSServer(t)
 			w := newTestGCSWriter(t, srv)
 			rows := []map[string]interface{}{{"id": "k1", "bad": make(chan int)}}

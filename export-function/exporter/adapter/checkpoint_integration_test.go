@@ -39,7 +39,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 	}
 
 	t.Run("[結合テスト]チェックポイントの取得", func(t *testing.T) {
-		t.Run("指定したテーブル名のチェックポイントがFirestoreに存在しないとき、Getは初回エクスポートを表すゼロ値のチェックポイントを返す", func(t *testing.T) {
+		t.Run("指定したテーブル名のチェックポイントがFirestoreに存在しないとき、取得結果は初回エクスポートを表す初期状態のチェックポイントになる", func(t *testing.T) {
 			store := newStore(t)
 
 			got, err := store.Get(ctx, "tst_table_missing")
@@ -51,7 +51,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 			require.True(t, got.UpdatedAt.IsZero())
 		})
 
-		t.Run("Updateで保存したチェックポイントを同じテーブル名でGetすると、保存した最終エクスポート時刻と直近の取り込み行数がそのまま読み出せる", func(t *testing.T) {
+		t.Run("保存したチェックポイントを同じテーブル名で取得すると、保存した最終エクスポート時刻と直近の取り込み行数がそのまま読み出せる", func(t *testing.T) {
 			store := newStore(t)
 			table := "tst_table_roundtrip"
 			lastExportTime := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
@@ -67,7 +67,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 			require.Equal(t, int64(42), got.LastRowCount)
 		})
 
-		t.Run("Firestoreに保存されたドキュメントの内容がチェックポイントとして解釈できない形式のとき、Getはエラーになる。その後、正しい形式でUpdateしてから同じテーブル名でGetすると成功する", func(t *testing.T) {
+		t.Run("Firestoreに保存されたドキュメントの内容がチェックポイントとして解釈できない形式のとき、取得はエラーになりエラーメッセージにパース失敗である旨が示される。その後、正しい形式で保存してから同じテーブル名で取得すると保存した内容が読み出せる", func(t *testing.T) {
 			store := newStore(t)
 			table := "tst_table_corrupt"
 			_, err := rawClient.Collection("export_checkpoints").Doc(table).Set(ctx, map[string]interface{}{
@@ -90,7 +90,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 	})
 
 	t.Run("[結合テスト]チェックポイントの更新", func(t *testing.T) {
-		t.Run("Updateを呼ぶと、そのテーブルのチェックポイントの更新日時は呼び出し時点の時刻になる", func(t *testing.T) {
+		t.Run("更新を呼ぶと、そのテーブルのチェックポイントの更新日時は呼び出し時点の時刻になる", func(t *testing.T) {
 			store := newStore(t)
 			table := "tst_table_updated_at"
 
@@ -105,7 +105,7 @@ func TestFirestoreCheckpointStore(t *testing.T) {
 			require.False(t, got.UpdatedAt.After(after))
 		})
 
-		t.Run("同じテーブルに対してUpdateを複数回呼ぶと、最新の呼び出し内容で上書きされる", func(t *testing.T) {
+		t.Run("同じテーブルに対して更新を複数回呼ぶと、最新の呼び出し内容で上書きされる", func(t *testing.T) {
 			store := newStore(t)
 			table := "tst_table_overwrite"
 
