@@ -43,14 +43,15 @@ var sourceSQLFiles = []string{
 
 // テストが投入する固定値。実データの ID と衝突しないダミー値を使う。
 const (
-	tstGameID      = "TSTGAME0000000000000000001"
-	tstPlayerID    = "00000000-0000-0000-0000-0000000000a1"
-	tstDeckOwnerID = "00000000-0000-0000-0000-0000000000d1"
-	tstFirebaseUID = "tst-firebase-uid"
-	tstProductID   = "tst_product"
-	tstCardA       = "TST-0001"
-	tstCardB       = "TST-0002"
-	tstCardC       = "TST-0003"
+	tstGameID          = "TSTGAME0000000000000000001"
+	tstPlayerID        = "00000000-0000-0000-0000-0000000000a1"
+	tstDeckOwnerID     = "00000000-0000-0000-0000-0000000000d1"
+	tstFirebaseUID     = "tst-firebase-uid"
+	tstProductID       = "tst_product"
+	tstCardA           = "TST-0001"
+	tstCardB           = "TST-0002"
+	tstCardC           = "TST-0003"
+	tstCardWithEffects = "TST-0004"
 )
 
 var (
@@ -176,6 +177,17 @@ func insertFixtures(ctx context.Context, pool *pgxpool.Pool) error {
 			sql:  `INSERT INTO shop.one_time_purchases (player_id, product_id, purchased_at) VALUES ($1, $2, $3)`,
 			args: []interface{}{tstPlayerID, tstProductID, tstFixtureTime},
 		},
+		{
+			sql: `INSERT INTO card.card_definitions
+			        (card_id, card_name, resource_label, faction, card_type, subtype,
+			         resizable, elastic, stats, effect_text, effects, restriction, is_active)
+			      VALUES
+			        ($1, 'テストカード', '', 'Neutral', 'Attachment', NULL,
+			         false, false, '{}'::jsonb, 'テスト効果',
+			         '[{"trigger": "on_deploy", "custom": "test_effect"}]'::jsonb,
+			         'unlimited', true)`,
+			args: []interface{}{tstCardWithEffects},
+		},
 	}
 	for _, stmt := range statements {
 		if _, err := pool.Exec(ctx, stmt.sql, stmt.args...); err != nil {
@@ -299,15 +311,12 @@ func TestPostgresExport(t *testing.T) {
 			rows, err := newReader(t).Query(ctx, sharedConf.Tables["card_definitions"], start, end)
 			require.NoError(t, err)
 
-			arrayCount := 0
-			for _, row := range encodeJSONL(t, rows) {
-				if row["effects"] == nil {
-					continue
-				}
-				require.IsType(t, []interface{}{}, row["effects"], "card_id=%v", row["card_id"])
-				arrayCount++
-			}
-			require.NotZero(t, arrayCount)
+			row := findRowByCardID(encodeJSONL(t, rows), tstCardWithEffects)
+			require.NotNil(t, row, "card_id=%s", tstCardWithEffects)
+			require.Equal(t,
+				[]interface{}{map[string]interface{}{"trigger": "on_deploy", "custom": "test_effect"}},
+				row["effects"],
+			)
 		})
 
 		t.Run("対戦テーブルのとき、投入した対戦の内容がJSONLに現れる", func(t *testing.T) {
@@ -373,6 +382,15 @@ func TestPostgresExport(t *testing.T) {
 			}
 		})
 	})
+}
+
+func findRowByCardID(rows []map[string]interface{}, cardID string) map[string]interface{} {
+	for _, row := range rows {
+		if row["card_id"] == cardID {
+			return row
+		}
+	}
+	return nil
 }
 
 func cardIDsOf(t *testing.T, rows []map[string]interface{}) []string {
